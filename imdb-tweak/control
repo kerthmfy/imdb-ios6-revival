@@ -1,0 +1,9 @@
+Package: com.kerth.imdbcapture
+Name: IMDb Capture
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: Logs the IMDb app's network requests and responses on legacy iOS, so a backend shim can be written against the real schema.
+Maintainer: kerthfyadao
+Author: kerthfyadao
+Section: Tweaks
+Depends: mobilesubstrate

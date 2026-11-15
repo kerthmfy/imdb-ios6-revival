@@ -1,0 +1,9 @@
+{
+    Filter = {
+        Bundles = (
+            "com.imdb.imdb",
+            "com.imdb.iphone",
+            "com.imdb.mobile"
+        );
+    };
+}

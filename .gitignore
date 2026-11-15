@@ -1,0 +1,23 @@
+# tooling / build output
+.theos/
+artifacts/
+*.dylib
+*.deb
+
+# copyrighted app binaries and generated metadata (never redistribute)
+*.bin
+objc-meta.txt
+
+# capture artifacts and secrets
+imdb-capture/.mitm/
+imdb-capture/bodies/
+imdb-capture/traffic.jsonl
+imdb-capture/traffic.log
+*.log
+
+# crash reports contain device identifiers
+crash*.plist
+latest-crash.plist
+
+.freebuff/
+.DS_Store
