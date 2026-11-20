@@ -171,7 +171,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.0-serve" forKey:@"build"];
+    [d setObject:@"2.2-homepage" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -310,6 +310,17 @@ static BOOL IsSuggestsRequest(NSURLRequest *request) {
            [request.URL.path hasPrefix:@"/suggests/"];
 }
 
+// The home page is not an app.imdb.com route: the app asks the template engine on
+// api.imdbws.com for a server-rendered layout. The host is alive but rejects the
+// app's 2011 AWS3 signature with 403, so the response has to come from here.
+static BOOL IsHomepageRequest(NSURLRequest *request) {
+    NSString *host = [request.URL.host lowercaseString];
+    if (![host isEqualToString:@"api.imdbws.com"]) return NO;
+    NSString *path = request.URL.path ? request.URL.path : @"";
+    return ([path rangeOfString:@"/template/imdb-ios-writable/"].location != NSNotFound &&
+            [path rangeOfString:@"homepage" options:NSCaseInsensitiveSearch].location != NSNotFound);
+}
+
 static BOOL IsDashRoute(NSString *path) {
     return ([path rangeOfString:@"maindetails"].location != NSNotFound);
 }
@@ -319,6 +330,8 @@ static BOOL IsDashRoute(NSString *path) {
 static NSString *RouteNameForRequest(NSURLRequest *request) {
     NSString *path = request.URL.path;
     if (!path) return nil;
+
+    if (IsHomepageRequest(request)) return @"homepage.json";
 
     if ([path isEqualToString:@"/hello"]) return @"hello.json";
 
@@ -407,6 +420,32 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
         return JSONErrorBody([NSString stringWithFormat:@"IMDb revival: fixture %@ unreadable", name]);
     }
     if ([name isEqualToString:@"hello.json"]) {
+        *statusOut = 200;
+        return raw;
+    }
+
+    // The homepage payload is not the app.imdb.com envelope: it carries
+    // @jstlMeta instead of exp, and a stale timestamp is the same kind of trap
+    // that exp is on maindetails.
+    if ([name isEqualToString:@"homepage.json"]) {
+        id hobj = [NSJSONSerialization JSONObjectWithData:raw
+                                                  options:NSJSONReadingMutableContainers
+                                                    error:NULL];
+        if ([hobj isKindOfClass:[NSMutableDictionary class]]) {
+            NSMutableDictionary *hd = (NSMutableDictionary *)hobj;
+            id meta = [hd objectForKey:@"@jstlMeta"];
+            if ([meta isKindOfClass:[NSMutableDictionary class]]) {
+                [(NSMutableDictionary *)meta setObject:[NSNumber numberWithLongLong:(long long)time(NULL)]
+                                                forKey:@"timestamp"];
+                [(NSMutableDictionary *)meta setObject:[NSNumber numberWithInt:12]
+                                                forKey:@"serverTimeMs"];
+            }
+            NSData *hout = [NSJSONSerialization dataWithJSONObject:hd options:0 error:NULL];
+            if (hout) {
+                *statusOut = 200;
+                return hout;
+            }
+        }
         *statusOut = 200;
         return raw;
     }
@@ -507,6 +546,11 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     NSString *host = [[request URL].host lowercaseString];
     if ([host isEqualToString:@"app.imdb.com"]) return YES;
     if (IsSuggestsRequest(request)) return YES;
+    // Template engine routes: the homepage answers from a fixture, every other
+    // template path falls through to a logged 404 so the missing routes are
+    // exactly the ones the app asks for.
+    if ([host isEqualToString:@"api.imdbws.com"] &&
+        [[request URL].path hasPrefix:@"/template/"]) return YES;
 
     // Everything else is the system's business, but IMDb/Amazon traffic is worth
     // recording: it is how the follow-up calls of a title page show up.
@@ -624,7 +668,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.1-serve" forKey:@"build"];
+    [d setObject:@"2.2-homepage" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")

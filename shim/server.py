@@ -76,6 +76,9 @@ COPYRIGHT = (
 )
 
 TITLE_PATH = re.compile(r"^/title/(tt\d+)/maindetails/?$")
+# The home page is rendered by the template engine on api.imdbws.com, not by
+# app.imdb.com. Its response is a Zulu envelope (@jstlMeta, no exp).
+HOMEPAGE_PATH = re.compile(r"^/template/imdb-ios-writable/.*homepage.*\.jstl/render/?$")
 
 PROXY_ENABLED = True
 
@@ -102,6 +105,18 @@ def hello_payload():
         "data": {"time": int(time.time()), "status": "ok", "api_key": API_KEY},
         "copyright": COPYRIGHT,
     }
+
+
+def homepage_payload():
+    """Reconstructed home-page response (no captured sample exists: the host now
+    rejects the app's 2011 signature with 403). @jstlMeta.timestamp must be
+    current, the same way exp must be in the future for maindetails."""
+    doc = load_fixture("homepage.json")
+    meta = doc.get("@jstlMeta")
+    if isinstance(meta, dict):
+        meta["timestamp"] = int(time.time())
+        meta["serverTimeMs"] = 12
+    return doc
 
 
 def maindetails_payload(tconst):
@@ -197,6 +212,8 @@ class ShimHandler(BaseHTTPRequestHandler):
             status, body = 200, json.dumps(hello_payload()).encode()
         elif TITLE_PATH.match(path):
             status, body = 200, json.dumps(maindetails_payload(TITLE_PATH.match(path).group(1))).encode()
+        elif host == "api.imdbws.com" and HOMEPAGE_PATH.match(path):
+            status, body = 200, json.dumps(homepage_payload()).encode()
         elif path.rstrip("/") == "/title/maindetails":
             tconst = (parse_qs(parsed.query).get("tconst") or ["tt0133093"])[0]
             status, body = 200, json.dumps(maindetails_payload(tconst)).encode()

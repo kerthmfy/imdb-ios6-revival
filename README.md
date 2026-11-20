@@ -16,7 +16,7 @@ Research + tooling for keeping the **IMDb iOS app 3.4.2** (last build for iOS 6)
 
 Extracted from the app binary (`strings` + `otool -oV`), not guessed:
 
-- Hosts: `app.imdb.com`, `api.imdbws.com`, `sg.media-imdb.com`, `secure.imdb.com`,
+- Hosts: `app.imdb.com`, `api.imdbws.com` (home-page template, see below), `sg.media-imdb.com`, `secure.imdb.com`,
   `ios-app-config.media-imdb.com`, `feeds.media-imdb.com`, `m.imdb.com`
 - Base template: `http://imdb.com%@` (plain HTTP)
 - Detail endpoints: `/title/%@/maindetails`, `/name/%@/maindetails`, `/character/%@/maindetails`
@@ -113,6 +113,43 @@ no certificate or profile — see `docs` in the handover for the measurements.
 `Tweak.x` is the pure-C load marker. `Tweak.xm` is the request-logging build
 (NSURLConnection / UIWebView / NSMutableURLRequest hooks). Builds are armv7 against
 `iPhoneOS6.1.sdk`, MRC, Foundation-only.
+
+### The home screen: served, but empty (reconstruction, not capture)
+
+On launch the app asks the template engine, not the app API:
+
+```
+GET https://api.imdbws.com/template/imdb-ios-writable/ipad-homepage-v2.jstl/render?showtimesRegion=US
+    x-amzn-authorization: AWS3 AWSAccessKeyId=AKIAJ2TGR5WWERHW5FUA,Algorithm=HmacSHA256,…
+    x-amz-date: Fri, 01 Apr 2011 10:23:56 GMT
+    Accept: application/vnd.imdb.api+json
+```
+
+The path comes from `data.home_page.jstl` in `ios-app-config…/3.4.2/ipad.json.gz`, which also
+carries the whole layout (`sections` → widgets `vi`, `inth`, `natvad`, `rec`).
+
+**The response cannot be captured.** The host is alive on CloudFront, but it now answers
+`403 {"message":"Request is missing Authentication Token"}`, the app's 2011 AWS3 signature is
+rejected (`api.imdbws.com-403` in its own metrics), and the Wayback Machine holds only 403
+snapshots of that path. No rendered body exists anywhere we can reach, and the app has no cached
+copy (`Library/Caches/URLCache`, `AppConfigDict-3.4.2.data` contain nothing with `@jstlMeta`).
+
+**What is known about the shape** comes from the app's own class metadata: the response is a Zulu
+envelope (`@jstlMeta` with `responseType`, `serverTimeMs`, `requestId`, `timestamp`,
+`subrequestTimes`) and `IMHomepageResponse` exposes exactly three collections — `trailers`,
+`wideReleaseTitles`, `nativeAdArticles`.
+
+`Tweak.xm` answers that path from `homepage.json` and refreshes `@jstlMeta.timestamp`, the same way
+`exp` is refreshed for maindetails. Measured on the device: `serve api.imdbws.com … route=homepage.json
+status=200`, the app accepts it, does not crash and stops reporting homepage network errors — but
+**no widget data appears**: no poster requests, no recommendations request, no retry of the layout.
+Seeding real titles into the three collections, and repeating them under several plausible
+container keys (`data.homepage`, `data.render`, top level), changed nothing. The private template's
+contract is not recoverable from the binary by inspection.
+
+So the home tab stays empty. The route is kept anyway, because it replaces a `-1001` timeout (and
+the app's `tapToATF.homepage.networkErrors` counter) with an immediate valid response; the home
+screen itself is out of scope unless a real 2013 response turns up.
 
 ## Two device-specific facts that shape everything here
 

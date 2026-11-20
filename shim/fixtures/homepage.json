@@ -1,0 +1,15 @@
+{
+ "@type": "homepage",
+ "@jstlMeta": {
+  "responseType": "homepage",
+  "requestId": "imdb-revival-local",
+  "serverTimeMs": 12,
+  "timestamp": 1795218857,
+  "subrequestTimes": {
+   "homepage": 12
+  }
+ },
+ "trailers": [],
+ "wideReleaseTitles": [],
+ "nativeAdArticles": []
+}

@@ -235,3 +235,20 @@ trailer: dict(10)
   title: 'Fight Club'
   @type: 'mobile.media.video'
 ```
+
+## fixtures/homepage.json
+
+Not an `app.imdb.com` payload. Reconstructed Zulu envelope for the home page, whose template engine
+(`api.imdbws.com/template/imdb-ios-writable/ipad-homepage-v2.jstl/render`) now answers 403 and has
+no archived body:
+
+```
+@type: 'homepage'
+@jstlMeta: { responseType, requestId, serverTimeMs, timestamp, subrequestTimes }
+trailers, wideReleaseTitles, nativeAdArticles   (the three collections IMHomepageResponse exposes)
+```
+
+All three are empty on purpose. Filling them with real titles (top level, and again under
+`data.homepage` / `data.render` / other container keys) produced a 200 the app accepted but no
+widget content and no follow-up requests, so the template's real contract is still unknown; the
+file exists to remove the `-1001` timeout, not to render a page.
