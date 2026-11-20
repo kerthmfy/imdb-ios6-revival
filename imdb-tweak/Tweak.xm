@@ -26,6 +26,7 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIWebView.h>
+#include <dlfcn.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -191,6 +192,89 @@ static void LogLoadContext(void) {
     [d setObject:interesting forKey:@"images"];
     ProbeEmit(d);
 }
+
+#pragma mark - live data (TLSFix)
+
+// §17: the stock stack cannot handshake with sg.media-imdb.com or
+// api.graphql.imdb.com. The failure is errSSLPeerHandshakeFail (-9824), a
+// protocol mismatch, not trust. tlsfix.dylib patches CFNetwork and fixes it —
+// but Substrate injects into no new process here (§14.2), so nothing loads it
+// by itself. Load it ourselves, before the app's first request.
+static NSString * const kTLSFixPath = @"/Library/MobileSubstrate/DynamicLibraries/tlsfix.dylib";
+// Presence of this file turns on the live-fetch probe. It is a diagnostic, not a
+// feature: without the file nothing extra happens at launch.
+static NSString * const kLiveTestMark = @"/Library/IMDbRevival/livetest";
+
+static BOOL TLSFixImageLoaded(void) {
+    uint32_t total = _dyld_image_count();
+    for (uint32_t i = 0; i < total; i++) {
+        const char *name = _dyld_get_image_name(i);
+        if (name && strstr(name, "tlsfix")) return YES;
+    }
+    return NO;
+}
+// Returns nil on success, or the reason it could not be loaded.
+static NSString *LoadTLSFix(void) {
+    if (TLSFixImageLoaded()) return nil;
+    if (access([kTLSFixPath UTF8String], R_OK) != 0) return @"missing";
+    void *h = dlopen([kTLSFixPath UTF8String], RTLD_NOW | RTLD_GLOBAL);
+    if (h) return nil;
+    const char *e = dlerror();
+    return [NSString stringWithFormat:@"dlopen: %s", e ? e : "unknown error"];
+}
+
+// One synchronous fetch, logged as a `livetest` line. Runs on a background
+// thread so a dead host cannot stall the launch.
+@interface IMDBLiveTest : NSObject
+- (void)run:(id)ignored;
+@end
+
+@implementation IMDBLiveTest
+
+- (void)probeURL:(NSString *)url label:(NSString *)label {
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
+    [req setTimeoutInterval:20];
+    // A real UA matters: api.graphql.imdb.com answered 403 to a bare POST in E5.
+    [req setValue:@"IMDb/3.4.2 (iPad; iPhone OS 6.1.3)" forHTTPHeaderField:@"User-Agent"];
+
+    NSHTTPURLResponse *resp = nil;
+    NSError *err = nil;
+    NSData *body = [NSURLConnection sendSynchronousRequest:req
+                                         returningResponse:(NSURLResponse **)&resp
+                                                     error:&err];
+
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"livetest" forKey:@"event"];
+    [d setObject:label forKey:@"target"];
+    [d setObject:url forKey:@"url"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
+    [d setObject:[NSNumber numberWithBool:TLSFixImageLoaded()] forKey:@"tlsfix"];
+
+    if (err) {
+        [d setObject:[NSNumber numberWithInteger:[err code]] forKey:@"error_code"];
+        [d setObject:[[err userInfo] description] forKey:@"error"];
+    } else {
+        [d setObject:[NSNumber numberWithInteger:[resp statusCode]] forKey:@"status"];
+        [d setObject:[NSNumber numberWithUnsignedInteger:[body length]] forKey:@"bytes"];
+        if ([body length]) {
+            NSUInteger n = [body length] < 160 ? [body length] : 160;
+            NSString *head = [[[NSString alloc] initWithData:[body subdataWithRange:NSMakeRange(0, n)]
+                                                    encoding:NSUTF8StringEncoding] autorelease];
+            if (head) [d setObject:head forKey:@"head"];
+        }
+    }
+    ProbeEmit(d);
+}
+
+- (void)run:(id)ignored {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    [self probeURL:@"https://sg.media-imdb.com/suggests/t/the.json" label:@"sg"];
+    [self probeURL:@"https://v3.sg.media-imdb.com/suggestion/t/the.json" label:@"v3"];
+    [pool release];
+}
+
+@end
 
 #pragma mark - route table
 
@@ -401,6 +485,24 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
     [d setObject:@"IMDBServeProtocol" forKey:@"protocol"];
     [d setObject:kRoutesDir forKey:@"routes"];
     ProbeEmit(d);
+
+    // Live data: without this, sg.media-imdb.com and GraphQL fail -9824 inside
+    // the app exactly as they do in E5 (§17). Loading it here is what makes
+    // live search and live titles possible without repairing Substrate.
+    NSString *tlsFail = LoadTLSFix();
+    NSMutableDictionary *t = [NSMutableDictionary dictionary];
+    [t setObject:@"tlsfix" forKey:@"event"];
+    [t setObject:ProbeISO8601() forKey:@"ts"];
+    [t setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
+    [t setObject:(tlsFail ? @"failed" : @"loaded") forKey:@"result"];
+    if (tlsFail) [t setObject:tlsFail forKey:@"reason"];
+    [t setObject:[NSNumber numberWithBool:TLSFixImageLoaded()] forKey:@"image"];
+    ProbeEmit(t);
+
+    if (access([kLiveTestMark UTF8String], F_OK) == 0) {
+        [[[[IMDBLiveTest alloc] init] autorelease] performSelectorInBackground:@selector(run:)
+                                                                   withObject:nil];
+    }
 }
 
 %hook NSURLConnection
