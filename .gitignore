@@ -21,3 +21,6 @@ latest-crash.plist
 
 .freebuff/
 .DS_Store
+
+# shim runtime log
+shim/requests.jsonl
