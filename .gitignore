@@ -35,3 +35,6 @@ imdb-tweak/imdb-probe.jsonl
 
 # shim TLS material (self-signed, generated locally)
 shim/certs/
+
+# on-device probe logs pulled into the repo by hand
+logs/

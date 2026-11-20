@@ -39,6 +39,8 @@ imdb-capture/   mitmproxy harness that logs an iOS 6 device's traffic from a Mac
 make                                  # needs Theos with iPhoneOS6.1.sdk
 THEOS_DEVICE_IP=... make package install
 ./deploy.sh <device-ip> [user] [password]
+./watch.sh install <device-ip>        # keep the tweak loaded across relaunches
+./watch.sh status <device-ip>
 ./pull-log.sh <device-ip>
 ```
 
@@ -76,6 +78,24 @@ injects it into every process, SpringBoard included):
   sentinel), not by a flag the operator can forget; the probe build carries no sentinel and
   installs without any data directory.
 
+### Keeping the tweak loaded (`watch.sh`)
+
+Substrate cannot inject here (fact 2 below), so a relaunch of IMDb silently drops the tweak — and
+"search is broken again" looks exactly like "the app was restarted". `watch.sh install` adds a
+`LaunchDaemon` (`com.imdbrevival.watch`, `/var/root/imdb-watch.sh`) that watches `launchctl` for
+the app's pid and calls `cynject` once per process, reading the dylib `deploy.sh` deployed, so a
+new build is picked up on the next launch.
+
+The alternative — inserting `LC_LOAD_WEAK_DYLIB` into a copy of `IMDb.app` — was rejected: it
+means editing and re-signing a store-signed bundle (dumping it first if it is still FairPlay
+encrypted), and a bad edit to the app binary is far harder to undo than two files and one
+`launchctl unload`. The watcher changes nothing inside the app bundle.
+
+It injects 2 s after the pid appears, because launchd lists an app before dyld has run its own
+initialisers and injecting that early fails (`cynject` prints `_assert(false)`); failed attempts
+are retried five times at 1 s. `./watch.sh remove <ip>` unloads the job and deletes both files;
+`/Library/IMDbRevival/routes` and the dylib are left alone.
+
 `Tweak.x` is the pure-C load marker. `Tweak.xm` is the request-logging build
 (NSURLConnection / UIWebView / NSMutableURLRequest hooks). Builds are armv7 against
 `iPhoneOS6.1.sdk`, MRC, Foundation-only.
@@ -101,8 +121,8 @@ launchd hook is not running at all. The same dylib injects fine by hand with
 `cynject <pid> <dylib>`, so this is a loader-level problem, not a tweak problem.
 `/etc/launchd.conf` holds `bsexec .. /usr/bin/cynject 1 …SubstrateLauncher.dylib`, which is how
 Substrate is meant to bootstrap; on 6.1.3 it appears not to be processed. **Do not edit that file**
-— worst case it breaks the jailbreak. Until this is resolved, inject per launch:
-`cynject $(launchctl list | …) /var/root/serve.dylib`.
+— worst case it breaks the jailbreak. `./watch.sh install` works around it by re-injecting per
+launch; by hand it is `cynject $(launchctl list | grep -i imdb | cut -f1) <dylib>`.
 
 Consequence for the capture work: the Mac-side `shim/` remains the reference implementation, and
 the on-device tweak is driven by hand. Live-data fetch from the device is also limited: its own TLS
