@@ -75,3 +75,28 @@ templates with status codes. Verified intercepting HTTPS from a device.
 No app binaries, no IMDb or Apple code, and no device secrets are stored here. The app itself
 must come from your own device. IMDb data belongs to IMDb; this is a personal-compatibility
 hobby project.
+
+## shim (MVP)
+
+`shim/server.py` is a dependency-free HTTP server that stands in for `app.imdb.com`:
+
+- `GET /hello` -> `{ data: { time, status, api_key } }` (session bootstrap, no `exp`)
+- `GET /title/<tconst>/maindetails` and `GET /title/maindetails?tconst=<tconst>` ->
+  archived maindetails payload with `exp` set an hour ahead
+- everything else -> JSON 404, still logged
+
+```bash
+cd shim
+PORT=8080 ./run-shim.sh        # local testing, no privileges needed
+PORT=80   ./run-shim.sh        # what the device needs; port 80 is privileged
+./enable-device.sh <ipad-ip> 192.168.100.162    # points app.imdb.com at the shim
+./enable-device.sh --remove <ipad-ip>           # undo the hosts entry
+```
+
+Plain HTTP is deliberate: the app builds URLs as `http://imdb.com%@`, so no certificate is
+involved. `shim/requests.jsonl` records every request, so the shim doubles as the capture the
+device-side tweak never produced.
+
+MVP limits: every title returns the archived *Fight Club* body with the requested `tconst`
+substituted, so ratings/plot are wrong for other ids. Feed routes (`/browse/*`, `/chart/*`) are
+not implemented yet.

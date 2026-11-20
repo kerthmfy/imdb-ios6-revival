@@ -1,0 +1,6 @@
+{"ts": "2026-11-20T13:07:53", "method": "GET", "path": "/hello", "host": "127.0.0.1:8080", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:07:53", "method": "GET", "path": "/hello", "host": "127.0.0.1:8080", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:07:53", "method": "GET", "path": "/title/tt1375666/maindetails", "host": "127.0.0.1:8080", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:07:53", "method": "GET", "path": "/title/maindetails?tconst=tt0137523", "host": "127.0.0.1:8080", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:07:53", "method": "GET", "path": "/nope", "host": "127.0.0.1:8080", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:07:53", "method": "GET", "path": "/hello", "host": "127.0.0.1:8080", "ua": "curl/8.7.1"}

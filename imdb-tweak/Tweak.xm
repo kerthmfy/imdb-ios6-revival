@@ -1,46 +1,67 @@
-// IMDBCapture v0.8 — marker plus every plausible request entry point.
+// IMDBCapture v1.0 — marker + request hooks, logging to sandbox-safe paths.
+//
+// Earlier builds wrote to /var/mobile/Library/Logs, which an App Store sandbox
+// may deny, making "no log" indistinguishable from "not injected". This writes
+// to $HOME/Documents (the app's own container) and /tmp, both allowed.
 #import <Foundation/Foundation.h>
 #import <UIKit/UIWebView.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
-#define LOG_PATH "/var/mobile/Library/Logs/imdb-capture.log"
+static const char *gPaths[2];
+
+static void InitPaths(void) {
+    static int done = 0;
+    if (done) return;
+    done = 1;
+    static char containerPath[512];
+    const char *home = getenv("HOME");
+    if (home) {
+        snprintf(containerPath, sizeof(containerPath), "%s/Documents/imdb-capture.log", home);
+        gPaths[0] = containerPath;
+    }
+    gPaths[1] = "/tmp/imdb-capture.log";
+}
 
 static void CLog(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    FILE *f = fopen(LOG_PATH, "a");
-    if (f) {
+    InitPaths();
+    for (int i = 0; i < 2; i++) {
+        if (!gPaths[i]) continue;
+        FILE *f = fopen(gPaths[i], "a");
+        if (!f) continue;
+        va_list ap;
+        va_start(ap, fmt);
         vfprintf(f, fmt, ap);
+        va_end(ap);
         fputc('\n', f);
         fclose(f);
     }
-    va_end(ap);
 }
 
-__attribute__((constructor)) static void v08_marker(void) {
-    CLog("=== v0.8 loaded in pid %d ===", getpid());
+__attribute__((constructor)) static void v10_marker(void) {
+    CLog("=== v1.0 loaded, pid %d, HOME=%s ===", getpid(), getenv("HOME") ?: "(null)");
 }
 
 %hook NSURLConnection
 
 - (id)initWithRequest:(NSURLRequest *)request delegate:(id)delegate {
-    CLog("REQ[init] %s", request.URL.absoluteString.UTF8String);
+    CLog("REQ[init] %s %s", (request.HTTPMethod ?: @"GET").UTF8String, request.URL.absoluteString.UTF8String);
     return %orig;
 }
 
 - (id)initWithRequest:(NSURLRequest *)request delegate:(id)delegate startImmediately:(BOOL)startImmediately {
-    CLog("REQ[init-start] %s", request.URL.absoluteString.UTF8String);
+    CLog("REQ[init-start] %s %s", (request.HTTPMethod ?: @"GET").UTF8String, request.URL.absoluteString.UTF8String);
     return %orig;
 }
 
 + (NSURLConnection *)connectionWithRequest:(NSURLRequest *)request delegate:(id)delegate {
-    CLog("REQ[connWith] %s", request.URL.absoluteString.UTF8String);
+    CLog("REQ[connWith] %s %s", (request.HTTPMethod ?: @"GET").UTF8String, request.URL.absoluteString.UTF8String);
     return %orig;
 }
 
 + (NSData *)sendSynchronousRequest:(NSURLRequest *)request returningResponse:(NSURLResponse **)response error:(NSError **)error {
-    CLog("REQ[sync] %s", request.URL.absoluteString.UTF8String);
+    CLog("REQ[sync] %s %s", (request.HTTPMethod ?: @"GET").UTF8String, request.URL.absoluteString.UTF8String);
     return %orig;
 }
 
@@ -50,25 +71,6 @@ __attribute__((constructor)) static void v08_marker(void) {
 
 - (void)loadRequest:(NSURLRequest *)request {
     CLog("WEB[loadRequest] %s", request.URL.absoluteString.UTF8String);
-    %orig;
-}
-
-- (void)loadHTMLString:(NSString *)string baseURL:(NSURL *)baseURL {
-    CLog("WEB[loadHTML] base=%s", baseURL.absoluteString.UTF8String);
-    %orig;
-}
-
-- (void)loadData:(NSData *)data MIMEType:(NSString *)mimeType textEncodingName:(NSString *)encodingName baseURL:(NSURL *)baseURL {
-    CLog("WEB[loadData] base=%s", baseURL.absoluteString.UTF8String);
-    %orig;
-}
-
-%end
-
-%hook NSMutableURLRequest
-
-- (void)setURL:(NSURL *)URL {
-    CLog("SETURL %s", URL.absoluteString.UTF8String);
     %orig;
 }
 

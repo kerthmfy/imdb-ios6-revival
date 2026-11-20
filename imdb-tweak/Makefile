@@ -5,7 +5,7 @@ THEOS ?= $(HOME)/theos
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = IMDBCapture
-IMDBCapture_FILES = Tweak.x
+IMDBCapture_FILES = Tweak.xm
 IMDBCapture_FRAMEWORKS = Foundation UIKit
 IMDBCapture_CFLAGS = -Wno-deprecated-declarations
 
