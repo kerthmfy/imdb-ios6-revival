@@ -20,9 +20,9 @@ itself no longer accepts connections, so these fixtures are the only remaining g
 | Route | Fixture | `data` shape |
 |---|---|---|
 | `/title/<tconst>/maindetails` (2010) and `/title/maindetails?tconst=` (2012) | `md-2010.json`, `md-2012.json` | 18-26 keys, see below |
-| `/chart/top` | `chart-top.json` | `{ list: [...] }` |
-| `/feature/comingsoon` | `comingsoon.json` | `{ country, list: [...] }` |
-| `/boxoffice` | `boxoffice.json` | `{ date, list: [...] }` |
+| `/chart/top` | `chart-top.json` | `{ list: { label, list: [250 items] } }` |
+| `/feature/comingsoon` | `comingsoon.json` | `{ country, list: { label, list: [ {label, token, list: [...] } ] } }` |
+| `/boxoffice` | `boxoffice.json` | `{ date, list: { label, list: [ {title, weekend{currency,amount}} ] } }` |
 | `/hello?appid=unauth` | `hello.json` | `{ time, status, api_key }` |
 
 ## `maindetails` keys (2012 snapshot)
@@ -54,3 +54,14 @@ other route, otherwise the app can appear to hang with no requests in flight.
 
 Fixtures reference `ia.media-imdb.com`; the live search API now returns `m.media-amazon.com`.
 Both are HTTPS-capable on iOS 6 only via TLSFix, which is already installed on the test device.
+
+## List item shapes
+
+`data.list` is **always an object**, never a bare array:
+
+- `/chart/top` -> `{ label, list: [ { tconst, type, title, year, rating, num_votes, can_rate, image:{url,width,height} } ] }`
+- `/feature/comingsoon` -> `{ label, list: [ { label, token, list: [ { tconst, type, title, year } ] } ] }`
+  (grouped by release-date token)
+- `/boxoffice` -> `{ label, list: [ { weekend: { currency, amount }, title: { tconst, type, title, image } } ] }`
+
+Note `label` appears at two different levels, which is easy to get wrong in a shim.
