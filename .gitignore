@@ -4,6 +4,9 @@ artifacts/
 *.dylib
 *.deb
 
+# e5 TLS probe tool: the armv7 binary is built from e5/e5.m, not committed
+e5/e5
+
 # copyrighted app binaries and generated metadata (never redistribute)
 *.bin
 objc-meta.txt
@@ -22,5 +25,13 @@ latest-crash.plist
 .freebuff/
 .DS_Store
 
-# shim runtime log
-shim/requests.jsonl
+# shim runtime logs and on-device probe captures
+# (every line carries request URLs and, for the probe, the device container path
+#  and the app's device identifier -- keep them out of the repo)
+shim/*.jsonl
+
+# pulled device probe log
+imdb-tweak/imdb-probe.jsonl
+
+# shim TLS material (self-signed, generated locally)
+shim/certs/
