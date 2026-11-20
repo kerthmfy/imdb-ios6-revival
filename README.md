@@ -45,6 +45,21 @@ THEOS_DEVICE_IP=... make package install
 Installs to `/Library/MobileSubstrate/DynamicLibraries/` with a `Bundles = ( "com.imdb.imdb" )`
 filter; writes `/var/mobile/Library/Logs/imdb-capture.log`.
 
+The deploy script is deliberately paranoid, because this device has already been put into safe
+mode once by a dylib that was left in the load path **without** its filter plist (Substrate then
+injects it into every process, SpringBoard included):
+
+- refuses to run when `/private/var` free space or battery is below threshold (`MIN_FREE_MB`,
+  `MIN_BATTERY_PCT`), printing the reason;
+- writes the filter plist **before** the dylib, so an interrupted copy can only leave a harmless
+  filter with no dylib;
+- verifies the final pair (both files non-empty, plist contains the bundle id) and **rolls the
+  dylib back** if verification fails;
+- re-runs the preflight right before respringing;
+- resprings with `sbreload` (graceful) - never `killall -9 SpringBoard`;
+- `./deploy.sh --remove <ip>` uninstalls both files and only resprings if something was removed;
+- `./deploy.sh --selftest` exercises the verifier locally with four cases.
+
 `Tweak.x` is the pure-C load marker. `Tweak.xm` is the request-logging build
 (NSURLConnection / UIWebView / NSMutableURLRequest hooks). Builds are armv7 against
 `iPhoneOS6.1.sdk`, MRC, Foundation-only.
