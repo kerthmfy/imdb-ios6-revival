@@ -48,6 +48,13 @@ NAME="IMDBCapture"
 MIN_FREE_MB="${MIN_FREE_MB:-250}"
 MIN_BATTERY_PCT="${MIN_BATTERY_PCT:-20}"
 ROUTES_DIR="${ROUTES_DIR:-/Library/IMDbRevival/routes}"
+# Live data (live suggestions, live titles) needs tlsfix: the stock iOS 6 stack
+# cannot handshake with sg.media-imdb.com or api.graphql.imdb.com (-9824, §17).
+# The tweak serves fixtures without it, so a missing tlsfix is a degraded build,
+# not a broken one -- but it is the difference between live and frozen data, and
+# it fails silently at runtime. Refuse unless told otherwise.
+TLSFIX_PATH="${TLSFIX_PATH:-/Library/MobileSubstrate/DynamicLibraries/tlsfix.dylib}"
+ALLOW_NO_TLSFIX="${ALLOW_NO_TLSFIX:-0}"
 # auto = ask the local dylib (sentinel), 1 = always require, 0 = never require.
 NEEDS_ROUTES="${NEEDS_ROUTES:-auto}"
 
@@ -95,6 +102,13 @@ routes_ok_expr() {
     "$1" "$1" "$1"
 }
 
+# $1 = tlsfix dylib path on the device. Succeeds only for an existing, non-empty
+# file. tlsfix is what lets the tweak reach the live hosts (§17, §18); without it
+# every live route silently falls back to the fixtures.
+tlsfix_ok_expr() {
+  printf '[ -s "%s" ]' "$1"
+}
+
 selftest() {
   local tmp rc failures=0
   tmp="$(mktemp -d)"
@@ -134,6 +148,17 @@ selftest() {
   if sh -c "$(routes_ok_expr "$tmp/routes-ok")"; then
     echo "  ok: populated routes dir accepted"
   else echo "  FAIL: populated routes dir rejected"; failures=1; fi
+
+  # case 8: tlsfix present -> must pass
+  head -c 1024 /dev/zero > "$tmp/tlsfix.dylib"
+  if sh -c "$(tlsfix_ok_expr "$tmp/tlsfix.dylib")"; then
+    echo "  ok: present tlsfix accepted"
+  else echo "  FAIL: present tlsfix rejected"; failures=1; fi
+
+  # case 9: tlsfix missing -> must fail (the silent-fixtures bug)
+  if sh -c "$(tlsfix_ok_expr "$tmp/tlsfix-absent.dylib")" 2>/dev/null; then
+    echo "  FAIL: missing tlsfix accepted"; failures=1
+  else echo "  ok: missing tlsfix rejected"; fi
 
   rm -rf "$tmp"
   [ "$failures" -eq 0 ] && { echo "selftest PASSED"; return 0; } || { echo "selftest FAILED" >&2; return 1; }
@@ -219,6 +244,19 @@ preflight() {
     fi
   else
     echo "routes: not required (probe build serves nothing)"
+  fi
+
+  echo "tlsfix: $TLSFIX_PATH (required for live data)"
+  if rsh "$(tlsfix_ok_expr "$TLSFIX_PATH")"; then
+    echo "  found: $(rsh "ls -l '$TLSFIX_PATH' | tr -s ' ' | cut -d' ' -f5,9" | tr -d '\r') bytes"
+  elif [ "$ALLOW_NO_TLSFIX" = "1" ]; then
+    echo "  -> WARNING: missing, ALLOW_NO_TLSFIX=1. Search and titles will serve fixtures only." >&2
+  else
+    echo "  -> REFUSING: tlsfix is missing. Without it the tweak cannot handshake with" >&2
+    echo "     sg.media-imdb.com or api.graphql.imdb.com (-9824) and every live route" >&2
+    echo "     falls back to the fixtures, which looks like 'live data is broken'." >&2
+    echo "     Install com.skyglow.tlsfix, or set ALLOW_NO_TLSFIX=1 for a fixtures-only install." >&2
+    failed=1
   fi
 
   if [ "$failed" -ne 0 ]; then

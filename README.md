@@ -96,6 +96,20 @@ initialisers and injecting that early fails (`cynject` prints `_assert(false)`);
 are retried five times at 1 s. `./watch.sh remove <ip>` unloads the job and deletes both files;
 `/Library/IMDbRevival/routes` and the dylib are left alone.
 
+### Live data depends on `tlsfix.dylib`
+
+The tweak reaches live IMDb hosts only because it `dlopen`s
+`/Library/MobileSubstrate/DynamicLibraries/tlsfix.dylib` in its constructor before the first
+request. The stock iOS 6 stack cannot complete a handshake with `sg.media-imdb.com` or
+`api.graphql.imdb.com` — the error is `errSSLPeerHandshakeFail` (`-9824`), a cipher/version
+mismatch, not a trust problem — and Substrate never loads tlsfix here, so the tweak loads it
+itself. With it, live suggestions return `200` from inside the app; without it every live route
+falls back to the archived fixtures, which is indistinguishable from "the network is down".
+
+`deploy.sh` therefore checks for tlsfix and **refuses to deploy** when it is missing; set
+`ALLOW_NO_TLSFIX=1` for a deliberate fixtures-only install. This is not a trust change and needs
+no certificate or profile — see `docs` in the handover for the measurements.
+
 `Tweak.x` is the pure-C load marker. `Tweak.xm` is the request-logging build
 (NSURLConnection / UIWebView / NSMutableURLRequest hooks). Builds are armv7 against
 `iPhoneOS6.1.sdk`, MRC, Foundation-only.

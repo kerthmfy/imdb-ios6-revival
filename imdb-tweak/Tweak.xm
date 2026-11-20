@@ -195,6 +195,11 @@ static void LogLoadContext(void) {
 
 #pragma mark - live data (TLSFix)
 
+// Marks a request as one the tweak issued itself, so canInitWithRequest: lets it
+// through instead of serving it again (recursion guard). Declared here because
+// both the live fetch and its probe need it before the route table.
+static NSString * const kServedKey = @"IMDBServedRequest";
+
 // §17: the stock stack cannot handshake with sg.media-imdb.com or
 // api.graphql.imdb.com. The failure is errSSLPeerHandshakeFail (-9824), a
 // protocol mismatch, not trust. tlsfix.dylib patches CFNetwork and fixes it —
@@ -231,11 +236,19 @@ static NSString *LoadTLSFix(void) {
 
 @implementation IMDBLiveTest
 
-- (void)probeURL:(NSString *)url label:(NSString *)label {
+- (void)probeURL:(NSString *)url label:(NSString *)label bypassTweak:(BOOL)bypass {
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
     [req setTimeoutInterval:20];
+    // Without this a cached body makes a broken TLS path look healthy: the first
+    // no-tlsfix run reported 200/3,170 B from cache while the fetch was failing.
+    [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
     // A real UA matters: api.graphql.imdb.com answered 403 to a bare POST in E5.
     [req setValue:@"IMDb/3.4.2 (iPad; iPhone OS 6.1.3)" forHTTPHeaderField:@"User-Agent"];
+    // IsSuggestsRequest matches https too, so without this the "raw" probe is
+    // answered by our own protocol and its bytes say nothing about TLS.
+    if (bypass) {
+        [NSURLProtocol setProperty:[NSNumber numberWithBool:YES] forKey:kServedKey inRequest:req];
+    }
 
     NSHTTPURLResponse *resp = nil;
     NSError *err = nil;
@@ -269,18 +282,22 @@ static NSString *LoadTLSFix(void) {
 
 - (void)run:(id)ignored {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-    [self probeURL:@"https://sg.media-imdb.com/suggests/t/the.json" label:@"sg"];
-    [self probeURL:@"https://v3.sg.media-imdb.com/suggestion/t/the.json" label:@"v3"];
+    // Raw TLS: the tweak is told to keep its hands off these two.
+    [self probeURL:@"https://sg.media-imdb.com/suggests/t/the.json" label:@"sg-raw" bypassTweak:YES];
+    [self probeURL:@"https://v3.sg.media-imdb.com/suggestion/t/the.json" label:@"v3-raw" bypassTweak:YES];
+    // Same request the app makes, so it goes through IMDBServeProtocol: canInit,
+    // worker thread, live fetch, delivery back to this client. Proves the route,
+    // not just the network.
+    [self probeURL:@"http://sg.media-imdb.com/suggests/t/the.json" label:@"sg-protocol" bypassTweak:NO];
+    // A prefix upstream has nothing for: must end up on the fixture, not an
+    // empty page. The serve line says which side answered.
+    [self probeURL:@"http://sg.media-imdb.com/suggests/z/zzzqqqx.json" label:@"sg-fallback" bypassTweak:NO];
     [pool release];
 }
 
 @end
 
 #pragma mark - route table
-
-// Redirect check. Requests the tweak will issue itself later (live fetches) must
-// carry this property so they are not served in a loop; nothing issues them yet.
-static NSString * const kServedKey = @"IMDBServedRequest";
 
 // Search-as-you-type is what makes a title reachable at all. The app asks
 // sg.media-imdb.com over http, upstream answers 301 to https, and this device's
@@ -334,6 +351,30 @@ static NSString *TconstForRequest(NSURLRequest *request) {
     return nil;
 }
 
+static NSData *JSONErrorBody(NSString *message);
+
+// Offline answer for a suggestions request: the archived capture, re-wrapped in
+// the JSONP form the app expects. This is the fallback whenever the live fetch
+// fails, so search keeps working with no network and no tlsfix.
+static NSData *FixtureSuggests(NSURLRequest *request, NSInteger *statusOut,
+                               NSString **ctypeOut, NSString **routeOut) {
+    if (routeOut) *routeOut = @"suggests.json";
+    if (ctypeOut) *ctypeOut = @"application/javascript";
+
+    NSData *inner = [NSData dataWithContentsOfFile:
+                     [kRoutesDir stringByAppendingPathComponent:@"suggests.json"]];
+    if (!inner) {
+        *statusOut = 503;
+        return JSONErrorBody(@"IMDb revival: suggests.json missing");
+    }
+    NSString *leaf = [[request.URL.path lastPathComponent] stringByDeletingPathExtension];
+    if (![leaf length]) leaf = @"x";
+    NSString *payload = [[[NSString alloc] initWithData:inner encoding:NSUTF8StringEncoding] autorelease];
+    NSString *text = [NSString stringWithFormat:@"imdb$%@(%@)", leaf, payload ? payload : @"{}"];
+    *statusOut = 200;
+    return [text dataUsingEncoding:NSUTF8StringEncoding];
+}
+
 static NSData *JSONErrorBody(NSString *message) {
     NSDictionary *d = [NSDictionary dictionaryWithObject:message forKey:@"error"];
     NSDictionary *wrap = [NSDictionary dictionaryWithObject:d forKey:@"data"];
@@ -349,20 +390,7 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
     // Suggestions are JSONP-ish: imdb$<prefix>({...}). The callback name has to
     // match the prefix the app asked for or it is ignored.
     if (IsSuggestsRequest(request)) {
-        if (routeOut) *routeOut = @"suggests.json";
-        NSData *inner = [NSData dataWithContentsOfFile:
-                         [kRoutesDir stringByAppendingPathComponent:@"suggests.json"]];
-        if (!inner) {
-            *statusOut = 503;
-            return JSONErrorBody(@"IMDb revival: suggests.json missing");
-        }
-        NSString *leaf = [[request.URL.path lastPathComponent] stringByDeletingPathExtension];
-        if (![leaf length]) leaf = @"x";
-        NSString *payload = [[[NSString alloc] initWithData:inner encoding:NSUTF8StringEncoding] autorelease];
-        NSString *text = [NSString stringWithFormat:@"imdb$%@(%@)", leaf, payload ? payload : @"{}"];
-        if (ctypeOut) *ctypeOut = @"application/javascript";
-        *statusOut = 200;
-        return [text dataUsingEncoding:NSUTF8StringEncoding];
+        return FixtureSuggests(request, statusOut, ctypeOut, routeOut);
     }
 
     NSString *name = RouteNameForRequest(request);
@@ -406,9 +434,66 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
     return raw;
 }
 
+#pragma mark - live suggestions
+
+// The app asks for `http://sg.media-imdb.com/suggests/…`; upstream answers 301 to
+// https, and without tlsfix that hop dies at -9824 (§17). With tlsfix loaded
+// (§18) the same path over https returns live JSONP — the exact envelope the app
+// parses — so the live response can be relayed as-is, no reshaping.
+static NSURL *LiveSuggestsURL(NSURLRequest *request) {
+    NSString *path = request.URL.path ? request.URL.path : @"/suggests/";
+    NSString *query = request.URL.query;
+    NSString *s = [NSString stringWithFormat:@"https://sg.media-imdb.com%@%@", path,
+                   [query length] ? [@"?" stringByAppendingString:query] : @""];
+    return [NSURL URLWithString:s];
+}
+
+// Returns the live body, or nil when it is not usable (no tlsfix, no network,
+// non-200, empty, or not the JSONP the client expects) — every nil becomes the
+// fixture. Runs on a worker thread, so a 6 s timeout cannot stall the UI.
+static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **errOut) {
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    [req setTimeoutInterval:6.0];
+    // Live means live: a cached copy would hide a broken TLS path and make the
+    // fixture fallback unreachable (§18.3).
+    [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
+    [req setValue:@"IMDb/3.4.2 (iPad; iPhone OS 6.1.3)" forHTTPHeaderField:@"User-Agent"];
+    // Must not be re-intercepted: this request is the tweak talking to the world.
+    [NSURLProtocol setProperty:[NSNumber numberWithBool:YES] forKey:kServedKey inRequest:req];
+
+    NSHTTPURLResponse *resp = nil;
+    NSError *err = nil;
+    NSData *body = [NSURLConnection sendSynchronousRequest:req
+                                         returningResponse:(NSURLResponse **)&resp
+                                                     error:&err];
+    if (statusOut) *statusOut = resp ? [resp statusCode] : 0;
+
+    if (err) {
+        if (errOut) *errOut = [NSString stringWithFormat:@"%@ %ld", [err domain], (long)[err code]];
+        return nil;
+    }
+    if (!resp || [resp statusCode] != 200 || ![body length]) {
+        if (errOut) *errOut = [NSString stringWithFormat:@"status %ld, %lu bytes",
+                               (long)(resp ? [resp statusCode] : 0), (unsigned long)[body length]];
+        return nil;
+    }
+    // Guard the contract, not the content: a non-JSONP body would be silently
+    // ignored by the app, which looks exactly like an empty result list.
+    NSRange r = [body rangeOfData:[@"imdb$" dataUsingEncoding:NSUTF8StringEncoding]
+                          options:0 range:NSMakeRange(0, MIN((NSUInteger)16, [body length]))];
+    if (r.location == NSNotFound) {
+        if (errOut) *errOut = @"body is not JSONP";
+        return nil;
+    }
+    return body;
+}
+
 #pragma mark - protocol
 
 @interface IMDBServeProtocol : NSURLProtocol
+{
+    BOOL _cancelled;
+}
 @end
 
 @implementation IMDBServeProtocol
@@ -435,6 +520,16 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
 
 - (void)startLoading {
     NSURLRequest *request = [self request];
+
+    // Live first, fixture as the fallback: this is the only route with a real
+    // upstream left. Handled off the caller's thread so search-as-you-type does
+    // not block on it.
+    if (IsSuggestsRequest(request)) {
+        [NSThread detachNewThreadSelector:@selector(runLiveSuggests)
+                                 toTarget:self
+                               withObject:nil];
+        return;
+    }
 
     NSInteger status = 200;
     NSString *route = nil;
@@ -466,6 +561,58 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
 }
 
 - (void)stopLoading {
+    _cancelled = YES;
+}
+
+// Worker thread: try the live host, log which side answered, deliver either way.
+- (void)runLiveSuggests {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSURLRequest *request = [[self request] retain];
+
+    NSInteger status = 0;
+    NSString *err = nil;
+    NSURL *live = LiveSuggestsURL(request);
+    NSData *body = FetchLiveSuggests(live, &status, &err);
+    NSString *source = @"suggests-live";
+    NSString *ctype = @"application/javascript";
+
+    if (!body) {
+        // Fallback. Reset status so a failed live attempt cannot leak its 0/403
+        // into the response the client sees.
+        NSInteger fstatus = 0;
+        NSString *fctype = nil;
+        NSString *froute = nil;
+        body = FixtureSuggests(request, &fstatus, &fctype, &froute);
+        status = fstatus;
+        ctype = fctype ? fctype : @"application/javascript";
+        source = [NSString stringWithFormat:@"suggests-fixture(%@)", err ? err : @"no body"];
+    }
+
+    NSDictionary *extra = [NSDictionary dictionaryWithObjectsAndKeys:
+                           source, @"route",
+                           [NSNumber numberWithInteger:status], @"served_status",
+                           [NSNumber numberWithUnsignedInteger:[body length]], @"served_bytes",
+                           [live absoluteString], @"live_url",
+                           nil];
+    ProbeLogRequest(request, @"serve", extra);
+
+    if (!_cancelled) {
+        NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
+                                 ctype, @"Content-Type",
+                                 [NSString stringWithFormat:@"%lu", (unsigned long)[body length]], @"Content-Length",
+                                 nil];
+        NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
+                                                             statusCode:status
+                                                            HTTPVersion:@"HTTP/1.1"
+                                                           headerFields:headers];
+        [[self client] URLProtocol:self didReceiveResponse:resp cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+        if ([body length]) [[self client] URLProtocol:self didLoadData:body];
+        [[self client] URLProtocolDidFinishLoading:self];
+        [resp release];
+    }
+
+    [request release];
+    [pool release];
 }
 
 @end
