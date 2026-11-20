@@ -9,3 +9,5 @@
 {"ts": "2026-11-20T13:08:52", "method": "GET", "path": "/hello", "host": "127.0.0.1", "ua": "curl/8.7.1"}
 {"ts": "2026-11-20T13:08:52", "method": "GET", "path": "/title/tt0133093/maindetails", "host": "127.0.0.1", "ua": "curl/8.7.1"}
 {"ts": "2026-11-20T13:10:24", "method": "GET", "path": "/hello", "host": "app.imdb.com", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:13:31", "method": "GET", "path": "/hello", "host": "127.0.0.1", "ua": "curl/8.7.1"}
+{"ts": "2026-11-20T13:13:31", "method": "GET", "path": "/title/tt0133093/maindetails", "host": "127.0.0.1", "ua": "curl/8.7.1"}
