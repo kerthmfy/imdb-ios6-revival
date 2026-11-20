@@ -89,7 +89,7 @@ hobby project.
 cd shim
 PORT=8080 ./run-shim.sh        # local testing, no privileges needed
 PORT=80   ./run-shim.sh        # what the device needs; port 80 is privileged
-./enable-device.sh <ipad-ip> 192.168.100.162    # points app.imdb.com at the shim
+./enable-device.sh <ipad-ip> <mac-ip>           # points app.imdb.com at the shim
 ./enable-device.sh --remove <ipad-ip>           # undo the hosts entry
 ```
 
@@ -99,4 +99,8 @@ device-side tweak never produced.
 
 MVP limits: every title returns the archived *Fight Club* body with the requested `tconst`
 substituted, so ratings/plot are wrong for other ids. Feed routes (`/browse/*`, `/chart/*`) are
-not implemented yet.
+not implemented yet. `/hello` returns a constant `api_key`; nothing validates it because the shim
+is the server.
+
+Both the Mac and the iPad are on DHCP here — re-check `ipconfig getifaddr en0` before wiring the
+device, since the shim host address has already moved once.
