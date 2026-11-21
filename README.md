@@ -1,7 +1,6 @@
 # imdb-ios6-revival
 
-Research + tooling for keeping the **IMDb iOS app 3.4.2** (last build for iOS 6) usable on an
-**iPad 2, iOS 6.1.3**. The app installs and launches, but most of its UI is empty or errors out.
+Research + tooling for keeping the **IMDb iOS app 3.4.2** (last build for iOS 6) usable on iOS 6.1.3**. wip.
 
 ## Status
 
