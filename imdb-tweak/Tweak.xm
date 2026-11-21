@@ -171,7 +171,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.2-homepage" forKey:@"build"];
+    [d setObject:@"2.3-claimlog" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -544,13 +544,24 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     if ([NSURLProtocol propertyForKey:kServedKey inRequest:request]) return NO;
 
     NSString *host = [[request URL].host lowercaseString];
-    if ([host isEqualToString:@"app.imdb.com"]) return YES;
-    if (IsSuggestsRequest(request)) return YES;
+    BOOL claimsApp = [host isEqualToString:@"app.imdb.com"];
+    BOOL claimsSuggests = IsSuggestsRequest(request);
     // Template engine routes: the homepage answers from a fixture, every other
     // template path falls through to a logged 404 so the missing routes are
     // exactly the ones the app asks for.
-    if ([host isEqualToString:@"api.imdbws.com"] &&
-        [[request URL].path hasPrefix:@"/template/"]) return YES;
+    BOOL claimsTemplate = [host isEqualToString:@"api.imdbws.com"] &&
+                          [[request URL].path hasPrefix:@"/template/"];
+
+    if (claimsApp || claimsSuggests || claimsTemplate) {
+        // Recorded at claim time as well as at serve time: a request that is
+        // claimed and then cancelled by the app never reaches startLoading, and
+        // its absence would read as "the app never asked for it".
+        NSString *match = claimsTemplate ? @"api.imdbws.com/template"
+                                         : (claimsApp ? @"app.imdb.com" : @"suggests");
+        ProbeLogRequest(request, @"claim",
+                        [NSDictionary dictionaryWithObject:match forKey:@"claim"]);
+        return YES;
+    }
 
     // Everything else is the system's business, but IMDb/Amazon traffic is worth
     // recording: it is how the follow-up calls of a title page show up.
@@ -668,7 +679,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.2-homepage" forKey:@"build"];
+    [d setObject:@"2.3-claimlog" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
