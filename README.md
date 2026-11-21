@@ -1,6 +1,6 @@
 # imdb-ios6-revival
 
-Research + tooling for keeping the **IMDb iOS app 3.4.2** (last build for iOS 6) usable on iOS 6.1.3**. wip.
+Research + tooling for keeping the **IMDb iOS app 3.4.2** (last build for iOS 6) usable on **iOS 6.1.3**. wip.
 
 ## Status
 
