@@ -75,6 +75,8 @@ def widget_data(md):
         "num_votes": votes,
         "runtime": runtime,
         "image": image,
+        "poster": image,
+        "imageURL": image.get("url", ""),
         "genres": md.get("genres") or [],
     }
     # One block per widget name in the config. Widgets whose data we cannot
@@ -83,7 +85,11 @@ def widget_data(md):
     return {
         "hero": hero,
         "titl": {"title": md.get("title"), "year": md.get("year"), "type": md.get("type")},
-        "pstr": {"image": image},
+        # The poster widget exposes image / imageURL / posterURL; offer all three
+        # with the same value rather than betting on one.
+        "pstr": {"image": image, "poster": image,
+                 "imageURL": image.get("url", ""), "posterURL": image.get("url", ""),
+                 "url": image.get("url", "")},
         "arate": {"rating": rating, "num_votes": votes},
         "urate": {},
         "meta": {"metascore": md.get("metascore")} if md.get("metascore") else {},

@@ -187,6 +187,15 @@ http with `403` — the same path over https is a `200` JPEG. Build `2.7-imagepr
 come back as `image/jpeg` instead of a 403 page (measured: four thumbnails, 2,381–2,800 B). The 2012
 trailer still cannot play: its `totaleclips.com` URL answers `401`.
 
+Both relays now share one `FetchHTTPS` helper, and relayed photos go through a bounded in-memory
+cache keyed by the https URL (build `2.8-relaycache`): first open logs four `route=image-live`, the
+second open four `route=image-cache`. A failed relay answers `404` and is logged as
+`image-fail(<reason>)` — the first fetch after a cold relaunch can time out (`-1001`) and then
+succeeds on the next open.
+
+The poster is a separate, unresolved case: the app never requests its image at all, so the widget is
+not laying out from `pstr.data` even with `image`, `poster`, `imageURL` and `posterURL` all supplied.
+
 ## Two device-specific facts that shape everything here
 
 **1. armv7 dylibs from a modern toolchain must be built `-marm`.** Such a dylib is compiled

@@ -271,7 +271,9 @@ data:     the md-2012 `data` block, so `dataPath` lookups resolve
 
 Measured: the app accepts it and renders the title page (title view controllers appear, cast
 thumbnails are fetched from `ia.media-imdb.com`). Widgets whose data we cannot produce (`meta`,
-`t250`, trailer video) carry an empty `{}` rather than a guessed value.
+`t250`, trailer video) carry an empty `{}` rather than a guessed value. The poster widget exposes `image`, `imageURL` and
+`posterURL` as properties, so `pstr` carries all three with the same URL — the app still never asks
+for the poster image, so the widget is not laying out from this data at all.
 
 ## fixtures/fullcredits.json
 

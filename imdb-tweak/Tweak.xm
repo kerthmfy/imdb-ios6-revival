@@ -39,6 +39,8 @@ __attribute__((used)) static const char kBuild[] = "IMDB_SERVE_BUILD IMDB_NEEDS_
 static NSString *gLogPaths[2] = { nil, nil };
 static NSLock *gLogLock = nil;
 static NSMutableSet *gSeen = nil;      // dedupe for pass-through logging
+static NSMutableDictionary *gImageCache = nil;   // relayed photos, by live URL
+static NSLock *gImageCacheLock = nil;
 static NSString * const kRoutesDir = @"/Library/IMDbRevival/routes";
 
 static void ProbeInit(void) {
@@ -48,6 +50,8 @@ static void ProbeInit(void) {
 
     gLogLock = [[NSLock alloc] init];
     gSeen = [[NSMutableSet alloc] init];
+    gImageCache = [[NSMutableDictionary alloc] init];
+    gImageCacheLock = [[NSLock alloc] init];
     gLogPaths[1] = @"/tmp/imdb-probe.jsonl";
 
     const char *home = getenv("HOME");
@@ -171,7 +175,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.7-imageproxy" forKey:@"build"];
+    [d setObject:@"2.8-relaycache" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -531,9 +535,13 @@ static NSURL *LiveSuggestsURL(NSURLRequest *request) {
 // Returns the live body, or nil when it is not usable (no tlsfix, no network,
 // non-200, empty, or not the JSONP the client expects) — every nil becomes the
 // fixture. Runs on a worker thread, so a 6 s timeout cannot stall the UI.
-static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **errOut) {
+// One live fetch for both relays (suggestions and images). They differ only in
+// timeout, in what counts as a usable body, and in caching, so the request
+// plumbing lives here once instead of twice.
+static NSData *FetchHTTPS(NSURL *url, NSTimeInterval timeout, NSInteger *statusOut,
+                          NSString **ctypeOut, NSString **errOut) {
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-    [req setTimeoutInterval:6.0];
+    [req setTimeoutInterval:timeout];
     // Live means live: a cached copy would hide a broken TLS path and make the
     // fixture fallback unreachable (§18.3).
     [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
@@ -547,6 +555,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
                                          returningResponse:(NSURLResponse **)&resp
                                                      error:&err];
     if (statusOut) *statusOut = resp ? [resp statusCode] : 0;
+    if (ctypeOut) *ctypeOut = resp ? [[resp allHeaderFields] objectForKey:@"Content-Type"] : nil;
 
     if (err) {
         if (errOut) *errOut = [NSString stringWithFormat:@"%@ %ld", [err domain], (long)[err code]];
@@ -557,6 +566,12 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
                                (long)(resp ? [resp statusCode] : 0), (unsigned long)[body length]];
         return nil;
     }
+    return body;
+}
+
+static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **errOut) {
+    NSData *body = FetchHTTPS(url, 6.0, statusOut, NULL, errOut);
+    if (!body) return nil;
     // Guard the contract, not the content: a non-JSONP body would be silently
     // ignored by the app, which looks exactly like an empty result list.
     NSRange r = [body rangeOfData:[@"imdb$" dataUsingEncoding:NSUTF8StringEncoding]
@@ -676,26 +691,41 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     NSURLRequest *request = [[self request] retain];
 
     NSURL *live = LiveImageURL(request);
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:live];
-    [req setTimeoutInterval:8.0];
-    [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
-    [req setValue:@"IMDb/3.4.2 (iPad; iPhone OS 6.1.3)" forHTTPHeaderField:@"User-Agent"];
-    [NSURLProtocol setProperty:[NSNumber numberWithBool:YES] forKey:kServedKey inRequest:req];
+    NSString *key = [live absoluteString];
+    NSString *source = @"image-live";
+    NSString *err = nil;
+    NSInteger status = 0;
+    NSData *body = nil;
+    NSString *ctype = nil;
 
-    NSHTTPURLResponse *resp = nil;
-    NSError *err = nil;
-    NSData *body = [NSURLConnection sendSynchronousRequest:req
-                                         returningResponse:(NSURLResponse **)&resp
-                                                     error:&err];
-    NSInteger status = resp ? [resp statusCode] : 0;
-    NSString *ctype = resp ? [[resp allHeaderFields] objectForKey:@"Content-Type"] : nil;
+    // The same portraits are asked for on every open, and each is a few KB, so
+    // keep them in memory instead of re-fetching per request. Bounded.
+    [gImageCacheLock lock];
+    NSDictionary *hit = [[gImageCache objectForKey:key] retain];
+    [gImageCacheLock unlock];
+
+    if (hit) {
+        body = [[hit objectForKey:@"body"] retain];
+        ctype = [[hit objectForKey:@"ctype"] retain];
+        status = 200;
+        source = @"image-cache";
+    } else {
+        body = [FetchHTTPS(live, 8.0, &status, &ctype, &err) retain];
+        if (body && [body length] <= 512 * 1024) {
+            [gImageCacheLock lock];
+            if ([gImageCache count] < 64) {
+                [gImageCache setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                                        body, @"body", (ctype ? ctype : @"image/jpeg"), @"ctype", nil]
+                                forKey:key];
+            }
+            [gImageCacheLock unlock];
+        }
+    }
     if (!ctype) ctype = @"image/jpeg";
     BOOL ok = (status == 200 && [body length] > 0);
 
-    NSString *route = ok ? @"image-live"
-                         : [NSString stringWithFormat:@"image-fail(%@)",
-                            err ? [NSString stringWithFormat:@"%@ %ld", [err domain], (long)[err code]]
-                                : [NSString stringWithFormat:@"status %ld", (long)status]];
+    NSString *route = ok ? source
+                         : [NSString stringWithFormat:@"image-fail(%@)", err ? err : @"no body"];
     ProbeLogRequest(request, @"serve",
                     [NSDictionary dictionaryWithObjectsAndKeys:
                      route, @"route",
@@ -720,6 +750,9 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
         [out release];
     }
 
+    [hit release];
+    [body release];
+    [ctype release];
     [request release];
     [pool release];
 }
@@ -784,7 +817,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.7-imageproxy" forKey:@"build"];
+    [d setObject:@"2.8-relaycache" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
