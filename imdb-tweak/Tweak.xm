@@ -27,12 +27,15 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
+#include <objc/runtime.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+static void InstallDataWrapperAccessorHooks(void);
 
 __attribute__((used)) static const char kBuild[] = "IMDB_SERVE_BUILD IMDB_NEEDS_ROUTES";
 
@@ -175,7 +178,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"3.5-pstrvalue" forKey:@"build"];
+    [d setObject:@"3.6-accessors" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -735,19 +738,29 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
                      nil]);
 
     if (!_cancelled) {
+        // The client must be driven on its own run loop (the main one); calling
+        // it from this worker thread is a data race the app can crash on.
+        NSData *outBody = [body retain];
+        NSString *outCtype = [ctype retain];
         NSInteger outStatus = ok ? 200 : 404;
-        NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
-                                 ctype, @"Content-Type",
-                                 [NSString stringWithFormat:@"%lu", (unsigned long)[body length]], @"Content-Length",
-                                 nil];
-        NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
-                                                            statusCode:outStatus
-                                                           HTTPVersion:@"HTTP/1.1"
-                                                          headerFields:headers];
-        [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageAllowed];
-        if ([body length]) [[self client] URLProtocol:self didLoadData:body];
-        [[self client] URLProtocolDidFinishLoading:self];
-        [out release];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!_cancelled) {
+                NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
+                                         outCtype, @"Content-Type",
+                                         [NSString stringWithFormat:@"%lu", (unsigned long)[outBody length]], @"Content-Length",
+                                         nil];
+                NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
+                                                                    statusCode:outStatus
+                                                                   HTTPVersion:@"HTTP/1.1"
+                                                                  headerFields:headers];
+                [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageAllowed];
+                if ([outBody length]) [[self client] URLProtocol:self didLoadData:outBody];
+                [[self client] URLProtocolDidFinishLoading:self];
+                [out release];
+            }
+            [outBody release];
+            [outCtype release];
+        });
     }
 
     [hit release];
@@ -812,12 +825,13 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
 %ctor {
     ProbeInit();
+    InstallDataWrapperAccessorHooks();
     [NSURLProtocol registerClass:[IMDBServeProtocol class]];
     LogLoadContext();
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"3.5-pstrvalue" forKey:@"build"];
+    [d setObject:@"3.6-accessors" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
@@ -922,6 +936,61 @@ static void LogWrap(NSString *op, NSString *key, id value) {
                DescribeValue(value), @"value",
                ProbeISO8601(), @"ts",
                [NSNumber numberWithInt:(int)getpid()], @"pid",
+               nil]);
+}
+
+// IMDataWrapper's own accessors are never called (subclasses override them),
+// so hook every subclass's no-argument object getters (type encoding
+// "@16@0:8") with one shared logger. The original IMP is preserved per method.
+static NSMutableDictionary *gOrigIMPs = nil;
+
+static void InstallDataWrapperAccessorHooks(void) {
+    Class base = objc_getClass("IMDataWrapper");
+    if (!base) { ProbeEmit([NSDictionary dictionaryWithObject:@"no IMDataWrapper class" forKey:@"event"]); return; }
+    gOrigIMPs = [[NSMutableDictionary alloc] init];
+
+    int total = objc_getClassList(NULL, 0);
+    if (total <= 0) return;
+    Class *classes = (Class *)malloc(sizeof(Class) * (size_t)total);
+    total = objc_getClassList(classes, total);
+    int hooked = 0;
+
+    for (int i = 0; i < total; i++) {
+        Class c = classes[i];
+        BOOL isSub = NO;
+        for (Class k = class_getSuperclass(c); k; k = class_getSuperclass(k)) {
+            if (k == base) { isSub = YES; break; }
+        }
+        if (!isSub) continue;
+
+        unsigned int mc = 0;
+        Method *methods = class_copyMethodList(c, &mc);
+        for (unsigned int j = 0; j < mc; j++) {
+            Method m = methods[j];
+            const char *enc = method_getTypeEncoding(m);
+            if (!enc || strcmp(enc, "@16@0:8") != 0) continue;
+            SEL sel = method_getName(m);
+            NSString *key = [NSString stringWithFormat:@"%s|%s", class_getName(c), sel_getName(sel)];
+            if ([gOrigIMPs objectForKey:key]) continue;
+            IMP orig = method_getImplementation(m);
+            [gOrigIMPs setObject:[NSValue valueWithPointer:(const void *)orig] forKey:key];
+            NSString *op = [NSString stringWithFormat:@"%s.%s", class_getName(c), sel_getName(sel)];
+            __block IMP origBlock = orig;
+            __block SEL selBlock = sel;
+            IMP repl = imp_implementationWithBlock(^id(id obj) {
+                id v = ((id (*)(id, SEL))origBlock)(obj, selBlock);
+                LogWrap(op, op, v);
+                return v;
+            });
+            if (repl) { method_setImplementation(m, repl); hooked++; }
+        }
+        if (methods) free(methods);
+    }
+    if (classes) free(classes);
+    ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+               @"accessor-hooks", @"event",
+               [NSNumber numberWithInt:hooked], @"hooked",
+               ProbeISO8601(), @"ts",
                nil]);
 }
 

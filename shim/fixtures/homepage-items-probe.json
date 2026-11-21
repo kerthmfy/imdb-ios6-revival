@@ -1,0 +1,39 @@
+{
+ "@type": "homepage",
+ "@jstlMeta": {
+  "responseType": "homepage",
+  "requestId": "imdb-revival-local",
+  "serverTimeMs": 12,
+  "timestamp": 1795218857,
+  "subrequestTimes": {
+   "homepage": 12
+  }
+ },
+ "trailers": [],
+ "wideReleaseTitles": {
+  "label": "Wide Releases",
+  "list": [
+   {
+    "tconst": "tt0111161",
+    "title": "The Shawshank Redemption",
+    "year": 1994,
+    "image": {
+     "url": "https://m.media-amazon.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+     "width": 336,
+     "height": 500
+    }
+   },
+   {
+    "tconst": "tt0133093",
+    "title": "The Matrix",
+    "year": 1999,
+    "image": {
+     "url": "https://m.media-amazon.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+     "width": 336,
+     "height": 500
+    }
+   }
+  ]
+ },
+ "nativeAdArticles": []
+}
