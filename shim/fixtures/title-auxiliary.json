@@ -1,0 +1,1782 @@
+{
+ "@type": "title-auxiliary",
+ "@jstlMeta": {
+  "responseType": "title-auxiliary",
+  "requestId": "imdb-revival-local",
+  "serverTimeMs": 12,
+  "timestamp": 1795220313,
+  "subrequestTimes": {
+   "title-auxiliary": 12
+  }
+ },
+ "tconst": "tt0137523",
+ "title": "Fight Club",
+ "sections": [
+  {
+   "type": "section",
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "firstOf",
+     "items": [
+      {
+       "type": "widget",
+       "class": "IMSpacerWidget",
+       "heightMin": 0,
+       "heightMax": 0,
+       "neverShowWithWidgetNamed": "wb"
+      },
+      {
+       "type": "widget",
+       "class": "IMTitlePageEpisodeInfoWidget",
+       "name": "epIn",
+       "insets": "{5,10,5,10}",
+       "data": {}
+      },
+      {
+       "type": "widget",
+       "class": "IMTitlePageAllEpisodesWidget",
+       "name": "epAll",
+       "insets": "{10,10,10,10}",
+       "data": {}
+      }
+     ]
+    },
+    {
+     "type": "widget",
+     "class": "IMConstPageHeroImageWidget",
+     "name": "hero",
+     "args": {
+      "unobscuredHeight": 175,
+      "titleWidget": {
+       "name": "titl",
+       "class": "IMTitlePageTitleWidget",
+       "insets": "{5,15,10,15}"
+      },
+      "topWidgetCandidates": [
+       {
+        "type": "widget",
+        "class": "IMTitlePageWatchAvailabilityWidget",
+        "name": "wb",
+        "insets": "{10,20,10,5}",
+        "data": {}
+       },
+       {
+        "type": "widget",
+        "class": "IMTitlePageEpisodeInfoWidget",
+        "name": "epIn",
+        "insets": "{5,10,5,10}",
+        "data": {}
+       },
+       {
+        "type": "widget",
+        "class": "IMTitlePageAllEpisodesWidget",
+        "name": "epAll",
+        "insets": "{10,10,10,10}",
+        "data": {}
+       }
+      ]
+     },
+     "data": {
+      "tconst": "tt0137523",
+      "title": "Fight Club",
+      "year": "1999",
+      "type": "feature",
+      "certificate": {
+       "certificate": "R",
+       "attr": "(certificate #36857)"
+      },
+      "rating": 8.9,
+      "num_votes": 665486,
+      "runtime": 8340,
+      "image": {
+       "width": 336,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+       "height": 500
+      },
+      "genres": [
+       "Drama"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "firstOf",
+       "items": [
+        {
+         "type": "widget",
+         "widthFactor": 225,
+         "class": "IMTitlePagePosterWidget",
+         "name": "pstr",
+         "heightMin": 308,
+         "heightMax": 308,
+         "insets": "{15,20,15,20}",
+         "data": {
+          "image": {
+           "width": 336,
+           "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+           "height": 500
+          }
+         }
+        },
+        {
+         "type": "widget",
+         "widthFactor": 225,
+         "class": "IMSectionHeaderWidget",
+         "neverShowAlone": true,
+         "args": {
+          "titleString": "Overview"
+         }
+        }
+       ]
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "row",
+         "borderBetweenItems": {
+          "style": "solid",
+          "insets": "{0,0,0,0}"
+         },
+         "items": [
+          {
+           "type": "widget",
+           "widthFactor": 0.5,
+           "class": "IMTitlePageAverageRatingWidget",
+           "name": "arate",
+           "data": {
+            "rating": 8.9,
+            "num_votes": 665486
+           }
+          },
+          {
+           "type": "widget",
+           "widthFactor": 0.5,
+           "class": "IMTitlePageAverageRatingWidget",
+           "name": "urate",
+           "showOnlyWithWidgetNamed": "arate",
+           "args": {
+            "type": "user"
+           },
+           "data": {}
+          },
+          {
+           "type": "firstOf",
+           "items": [
+            {
+             "type": "widget",
+             "class": "IMTitlePageMetascoreWidget",
+             "name": "meta",
+             "showOnlyWithWidgetNamed": "arate",
+             "data": {}
+            },
+            {
+             "type": "widget",
+             "class": "IMGenericTextWidget",
+             "name": "ocrev",
+             "showOnlyWithWidgetNamed": "arate",
+             "args": {
+              "standardLinkText": "Critics Reviews",
+              "accessoryImage": "details-icon.png",
+              "shouldShowWhen": {
+               "testContentsOfData": {
+                "dataPath": "hasCriticsReviews",
+                "dataType": "bool"
+               }
+              },
+              "actionViewController": "TitleCriticsReviewsController",
+              "actionPresentationStyle": "lightbox"
+             },
+             "data": {}
+            },
+            {
+             "type": "widget",
+             "class": "IMSpacerWidget",
+             "showOnlyWithWidgetNamed": "arate"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "type": "firstOf",
+         "items": [
+          {
+           "type": "widget",
+           "class": "IMTitlePagePlotSummaryWidget",
+           "name": "oplot",
+           "flexibleHeight": true,
+           "heightMin": 70,
+           "heightMax": 308,
+           "args": {
+            "style": "teaser"
+           },
+           "data": {
+            "plot": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that transforms into a violent revolution.",
+            "has_more": true
+           }
+          },
+          {
+           "type": "widget",
+           "class": "IMSpacerWidget",
+           "flexibleHeight": true,
+           "heightMin": 0,
+           "heightMax": 308
+          }
+         ]
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePagePersonRoleWidget",
+         "name": "drct",
+         "args": {
+          "role": "directors"
+         },
+         "data": {
+          "people": [
+           {
+            "name": {
+             "nconst": "nm0000399",
+             "name": "David Fincher",
+             "image": {
+              "width": 261,
+              "url": "http://ia.media-imdb.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+              "height": 400
+             }
+            }
+           }
+          ]
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePagePersonRoleWidget",
+         "name": "wrt",
+         "args": {
+          "role": "writers"
+         },
+         "data": {
+          "people": [
+           {
+            "name": {
+             "nconst": "nm0657333",
+             "name": "Chuck Palahniuk",
+             "image": {
+              "width": 267,
+              "url": "http://ia.media-imdb.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+              "height": 400
+             }
+            },
+            "attr": "(novel)"
+           },
+           {
+            "name": {
+             "nconst": "nm0880243",
+             "name": "Jim Uhls"
+            },
+            "attr": "(screenplay)"
+           }
+          ]
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageAllCastWidget",
+         "name": "cast",
+         "data": {
+          "people": [
+           {
+            "char": "Tyler Durden",
+            "name": {
+             "nconst": "nm0000093",
+             "name": "Brad Pitt",
+             "image": {
+              "width": 1458,
+              "url": "http://ia.media-imdb.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+              "height": 2048
+             }
+            }
+           },
+           {
+            "char": "The Narrator",
+            "name": {
+             "nconst": "nm0001570",
+             "name": "Edward Norton",
+             "image": {
+              "width": 312,
+              "url": "http://ia.media-imdb.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+              "height": 400
+             }
+            }
+           },
+           {
+            "char": "Marla Singer",
+            "name": {
+             "nconst": "nm0000307",
+             "name": "Helena Bonham Carter",
+             "image": {
+              "width": 281,
+              "url": "http://ia.media-imdb.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+              "height": 400
+             }
+            }
+           },
+           {
+            "as": "(as Meat Loaf Aday)",
+            "char": "Robert 'Bob' Paulson",
+            "name": {
+             "nconst": "nm0001533",
+             "name": "Meat Loaf",
+             "image": {
+              "width": 285,
+              "url": "http://ia.media-imdb.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+              "height": 400
+             }
+            }
+           }
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "type": "widget",
+     "class": "IMTitlePagePhotosWidget",
+     "name": "phtos",
+     "heightMin": 128,
+     "heightMax": 128,
+     "args": {
+      "photoIndent": 225
+     },
+     "data": {
+      "photos": [
+       {
+        "image": {
+         "url": "http://ia.media-imdb.com/images/M/MV5BNDY1MzE3MTI0Nl5BMl5BanBnXkFtZTcwNDIwNTI5Mw@@._V1_.jpg",
+         "width": 2048,
+         "height": 1335
+        }
+       },
+       {
+        "image": {
+         "url": "http://ia.media-imdb.com/images/M/MV5BMTM4MjA2MzI0OF5BMl5BanBnXkFtZTcwNjU3ODMzMw@@._V1_.jpg",
+         "width": 2048,
+         "height": 1365
+        }
+       },
+       {
+        "image": {
+         "url": "http://ia.media-imdb.com/images/M/MV5BMTQ2OTAxNjY5MF5BMl5BanBnXkFtZTYwMjY5OTk0._V1_.jpg",
+         "width": 276,
+         "height": 400
+        }
+       },
+       {
+        "image": {
+         "url": "http://ia.media-imdb.com/images/M/MV5BMjk3NTYyMzc4Nl5BMl5BanBnXkFtZTcwODU3ODMzMw@@._V1_.jpg",
+         "width": 2048,
+         "height": 1449
+        }
+       },
+       {
+        "image": {
+         "url": "http://ia.media-imdb.com/images/M/MV5BMTgxNzY2NjIxOV5BMl5BanBnXkFtZTcwNzU3ODMzMw@@._V1_.jpg",
+         "width": 2048,
+         "height": 1449
+        }
+       },
+       {
+        "image": {
+         "url": "http://ia.media-imdb.com/images/M/MV5BMjY2MTUyMzgzNF5BMl5BanBnXkFtZTYwOTA3NDYy._V1_.jpg",
+         "width": 440,
+         "height": 178
+        }
+       }
+      ]
+     }
+    },
+    {
+     "type": "widget",
+     "class": "IMTitlePagePlayTrailerWidget",
+     "name": "plytlr",
+     "args": {
+      "voiceoverMustBeEnabled": true
+     },
+     "data": {
+      "encodings": {
+       "H.264 480x270": {
+        "format": "H.264 480x270",
+        "url": "http://www.totaleclips.com/Player/Bounce.aspx?eclipid=e61676&bitrateid=461&vendorid=102&type=.mp4"
+       },
+       "H.264 640x360": {
+        "format": "H.264 640x360",
+        "url": "http://www.totaleclips.com/Player/Bounce.aspx?eclipid=e61676&bitrateid=472&vendorid=102&type=.mp4"
+       }
+      },
+      "description": "Trailer for Fight Club",
+      "relatedTitle": {
+       "title": "Fight Club",
+       "type": "feature",
+       "title_id": "tt0137523",
+       "year": "1999",
+       "image": {
+        "width": 336,
+        "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+        "height": 500
+       }
+      },
+      "duration_seconds": 120,
+      "slates": [
+       {
+        "width": 266,
+        "url": "http://ia.media-imdb.com/images/M/MV5BMTMxMjk1NTI3M15BMl5BanBnXkFtZTcwMTYwNzcyNA@@._V1_.jpg",
+        "height": 200
+       }
+      ],
+      "content_type": "Trailer",
+      "relatedName": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "http://ia.media-imdb.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "id": "vi781228825",
+      "title": "Fight Club",
+      "@type": "mobile.media.video"
+     }
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "widget",
+       "widthFactor": 225,
+       "class": "IMSectionHeaderWidget",
+       "neverShowAlone": true,
+       "args": {
+        "titleString": "Awards"
+       }
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMConstPageAwardsWidget",
+         "name": "tAwrd",
+         "heightMax": 400,
+         "heightMin": 400,
+         "data": {}
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageTop250Widget",
+         "name": "t250",
+         "data": {}
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "widget",
+       "widthFactor": 225,
+       "class": "IMSectionHeaderWidget",
+       "neverShowAlone": true,
+       "args": {
+        "titleString": "Reviews & Commentary"
+       }
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "row",
+         "borderBetweenItems": {
+          "style": "solid",
+          "insets": "{0,0,0,0}"
+         },
+         "items": [
+          {
+           "type": "widget",
+           "class": "IMGenericTextWidget",
+           "name": "crev",
+           "args": {
+            "standardLinkText": "Critics Reviews",
+            "accessoryImage": "details-icon.png",
+            "shouldShowWhen": {
+             "testContentsOfData": {
+              "dataPath": "hasCriticsReviews",
+              "dataType": "bool"
+             }
+            },
+            "actionViewController": "TitleCriticsReviewsController",
+            "actionPresentationStyle": "lightbox"
+           },
+           "data": {}
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "column",
+       "widthFactor": 225,
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMSectionHeaderWidget",
+         "neverShowAlone": true,
+         "args": {
+          "titleString": "Did You Know?"
+         },
+         "heightMax": 200,
+         "heightMin": 200
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePagePullquoteWidget",
+         "name": "pulq",
+         "flexibleHeight": true,
+         "neverShowAlone": true,
+         "heightMax": 250,
+         "heightMin": 1,
+         "data": {}
+        }
+       ]
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMTitlePageTriviaWidget",
+         "name": "triv",
+         "heightMax": 130,
+         "heightMin": 130,
+         "data": {
+          "trivium": "The shot surveying Project Mayhem's destructive equipment lying in underground parking lots was a three-dimensional composition of over 100 photographs of Los Angeles and Century City by special effects photographer Michael Douglas Middleton."
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageQuotesWidget",
+         "name": "quot",
+         "heightMax": 130,
+         "heightMin": 130,
+         "data": {
+          "quote": {
+           "lines": [
+            {
+             "stage": "first lines"
+            },
+            {
+             "stage": "Tyler points a gun into the Narrator's mouth"
+            },
+            {
+             "stage": "voiceover",
+             "quote": "People are always asking me if I know Tyler Durden. ",
+             "chars": [
+              {
+               "nconst": "nm0001570",
+               "char": "Narrator"
+              }
+             ]
+            },
+            {
+             "quote": "Three minutes. This is it - ground zero. Would you like to say a few words to mark the occasion? ",
+             "chars": [
+              {
+               "nconst": "nm0000093",
+               "char": "Tyler Durden"
+              }
+             ]
+            },
+            {
+             "quote": "...i... ann... iinn... ff... nnyin... ",
+             "chars": [
+              {
+               "nconst": "nm0001570",
+               "char": "Narrator"
+              }
+             ]
+            },
+            {
+             "stage": "voiceover",
+             "quote": "With a gun barrel between your teeth, you speak only in vowels. ",
+             "chars": [
+              {
+               "nconst": "nm0001570",
+               "char": "Narrator"
+              }
+             ]
+            },
+            {
+             "stage": "Tyler removes the gun from the Narrator's mouth"
+            },
+            {
+             "quote": "I can't think of anything. ",
+             "chars": [
+              {
+               "nconst": "nm0001570",
+               "char": "Narrator"
+              }
+             ]
+            },
+            {
+             "stage": "voiceover",
+             "quote": "For a second I totally forgot about Tyler's whole controlled demolition thing and I wonder how clean that gun is.",
+             "chars": [
+              {
+               "nconst": "nm0001570",
+               "char": "Narrator"
+              }
+             ]
+            }
+           ],
+           "qconst": "qt0479091"
+          }
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageGoofsWidget",
+         "name": "goof",
+         "heightMax": 130,
+         "heightMin": 130,
+         "data": {
+          "goof": "In Project Mayhem there is no names, but Bob gets called Bob four times. Twice by Tyler as a waiter and twice by one of the Space Monkey's when he is shot lying on the table."
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageCrazyCreditsWidget",
+         "name": "crzy",
+         "heightMax": 130,
+         "heightMin": 130,
+         "data": {}
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageSoundtracksWidget",
+         "name": "sndt",
+         "heightMax": 130,
+         "heightMin": 130,
+         "data": {}
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "widget",
+       "widthFactor": 225,
+       "class": "IMSectionHeaderWidget",
+       "neverShowAlone": true,
+       "args": {
+        "titleString": "Storyline"
+       }
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMTitlePagePlotSummaryWidget",
+         "name": "plotd",
+         "heightMax": 400,
+         "heightMin": 400,
+         "args": {
+          "style": "details",
+          "widgetTitle": "Plot Summary"
+         },
+         "data": {
+          "plot": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that transforms into a violent revolution.",
+          "has_more": true
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageTaglineWidget",
+         "name": "tgln",
+         "heightMax": 200,
+         "heightMin": 200,
+         "data": {
+          "tagline": "How much can you know about yourself if you've never been in a fight?"
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageGenresWidget",
+         "name": "gnrs",
+         "insets": "{7,20,10,20}",
+         "data": {
+          "genres": [
+           "Drama"
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "widget",
+       "widthFactor": 225,
+       "class": "IMSectionHeaderWidget",
+       "neverShowAlone": true,
+       "args": {
+        "titleString": "Details"
+       }
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMTitlePageReleaseDateWidget",
+         "name": "rdat",
+         "data": {
+          "release_date": {
+           "normal": "1999-10-15"
+          }
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageLanguagesWidget",
+         "name": "lang",
+         "data": {}
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageAlternateTitlesWidget",
+         "name": "altt",
+         "data": {}
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageFilmingLocationsWidget",
+         "name": "loctn",
+         "data": {}
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageRuntimesWidget",
+         "name": "runt",
+         "heightMax": 200,
+         "data": {
+          "runtime": 8340
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMGenericTextWidget",
+         "name": "altv",
+         "args": {
+          "shouldShowWhen": {
+           "testContentsOfData": {
+            "dataPath": "hasAlternateVersions",
+            "dataType": "bool"
+           }
+          },
+          "actionViewController": "TitleAlternateVersionsController",
+          "actionPresentationStyle": "lightbox",
+          "standardLinkText": "Alternate Versions",
+          "accessoryImage": "details-icon.png"
+         },
+         "data": {}
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "widget",
+       "widthFactor": 225,
+       "class": "IMSectionHeaderWidget",
+       "neverShowAlone": true,
+       "args": {
+        "titleString": "More Like This"
+       }
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMTitlePageSimilaritiesWidget",
+         "name": "sims",
+         "heightMax": 100,
+         "heightMin": 100,
+         "showOnlyInOrientation": "portrait",
+         "insets": "{9,14,9,20}",
+         "data": {}
+        },
+        {
+         "type": "widget",
+         "class": "IMGenericTextWidget",
+         "name": "conns",
+         "showOnlyInOrientation": "portrait",
+         "args": {
+          "standardLinkText": "Connections",
+          "accessoryImage": "chevron-icon.png",
+          "shouldShowWhen": {
+           "testContentsOfData": {
+            "dataPath": "titleConnectionsTotalCount",
+            "dataType": "number",
+            "minValue": 1
+           }
+          },
+          "actionViewController": "IMPhoneTitleConnectionsViewController",
+          "actionPresentationStyle": "lightbox"
+         },
+         "data": {}
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "section",
+   "borderTop": {
+    "style": "gradientSolid"
+   },
+   "background": {
+    "gradient": "constPageSectionBackgroundGradient",
+    "heightMax": 64
+   },
+   "borderBetweenItems": {
+    "style": "gradientSolid",
+    "insets": "{0,0,0,0}"
+   },
+   "items": [
+    {
+     "type": "row",
+     "items": [
+      {
+       "type": "widget",
+       "widthFactor": 225,
+       "class": "IMSectionHeaderWidget",
+       "neverShowAlone": true,
+       "args": {
+        "titleString": "More to Explore"
+       }
+      },
+      {
+       "type": "column",
+       "widthFactor": 402,
+       "borderBetweenItems": {
+        "style": "gradientSolid",
+        "insets": "{0,20,0,0}"
+       },
+       "items": [
+        {
+         "type": "widget",
+         "class": "IMTitlePageViewOnIMDbWidget",
+         "name": "imdbWS",
+         "args": {
+          "icon": "icon_btn_imdb.png"
+         },
+         "data": {
+          "tconst": "tt0137523"
+         }
+        },
+        {
+         "type": "widget",
+         "class": "IMTitlePageSearchAmazonShoppingAppWidget",
+         "name": "amznWS",
+         "args": {
+          "icon": "icon_btn_amzn_app.png"
+         },
+         "data": {}
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "widgets": {
+  "hero": {
+   "tconst": "tt0137523",
+   "title": "Fight Club",
+   "year": "1999",
+   "type": "feature",
+   "certificate": {
+    "certificate": "R",
+    "attr": "(certificate #36857)"
+   },
+   "rating": 8.9,
+   "num_votes": 665486,
+   "runtime": 8340,
+   "image": {
+    "width": 336,
+    "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+    "height": 500
+   },
+   "genres": [
+    "Drama"
+   ]
+  },
+  "titl": {
+   "title": "Fight Club",
+   "year": "1999",
+   "type": "feature"
+  },
+  "pstr": {
+   "image": {
+    "width": 336,
+    "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+    "height": 500
+   }
+  },
+  "arate": {
+   "rating": 8.9,
+   "num_votes": 665486
+  },
+  "urate": {},
+  "meta": {},
+  "oplot": {
+   "plot": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that transforms into a violent revolution.",
+   "has_more": true
+  },
+  "plotd": {
+   "plot": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that transforms into a violent revolution.",
+   "has_more": true
+  },
+  "drct": {
+   "people": [
+    {
+     "name": {
+      "nconst": "nm0000399",
+      "name": "David Fincher",
+      "image": {
+       "width": 261,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    }
+   ]
+  },
+  "wrt": {
+   "people": [
+    {
+     "name": {
+      "nconst": "nm0657333",
+      "name": "Chuck Palahniuk",
+      "image": {
+       "width": 267,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     "attr": "(novel)"
+    },
+    {
+     "name": {
+      "nconst": "nm0880243",
+      "name": "Jim Uhls"
+     },
+     "attr": "(screenplay)"
+    }
+   ]
+  },
+  "cast": {
+   "people": [
+    {
+     "char": "Tyler Durden",
+     "name": {
+      "nconst": "nm0000093",
+      "name": "Brad Pitt",
+      "image": {
+       "width": 1458,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     }
+    },
+    {
+     "char": "The Narrator",
+     "name": {
+      "nconst": "nm0001570",
+      "name": "Edward Norton",
+      "image": {
+       "width": 312,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    },
+    {
+     "char": "Marla Singer",
+     "name": {
+      "nconst": "nm0000307",
+      "name": "Helena Bonham Carter",
+      "image": {
+       "width": 281,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    },
+    {
+     "as": "(as Meat Loaf Aday)",
+     "char": "Robert 'Bob' Paulson",
+     "name": {
+      "nconst": "nm0001533",
+      "name": "Meat Loaf",
+      "image": {
+       "width": 285,
+       "url": "http://ia.media-imdb.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    }
+   ]
+  },
+  "phtos": {
+   "photos": [
+    {
+     "image": {
+      "url": "http://ia.media-imdb.com/images/M/MV5BNDY1MzE3MTI0Nl5BMl5BanBnXkFtZTcwNDIwNTI5Mw@@._V1_.jpg",
+      "width": 2048,
+      "height": 1335
+     }
+    },
+    {
+     "image": {
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTM4MjA2MzI0OF5BMl5BanBnXkFtZTcwNjU3ODMzMw@@._V1_.jpg",
+      "width": 2048,
+      "height": 1365
+     }
+    },
+    {
+     "image": {
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTQ2OTAxNjY5MF5BMl5BanBnXkFtZTYwMjY5OTk0._V1_.jpg",
+      "width": 276,
+      "height": 400
+     }
+    },
+    {
+     "image": {
+      "url": "http://ia.media-imdb.com/images/M/MV5BMjk3NTYyMzc4Nl5BMl5BanBnXkFtZTcwODU3ODMzMw@@._V1_.jpg",
+      "width": 2048,
+      "height": 1449
+     }
+    },
+    {
+     "image": {
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTgxNzY2NjIxOV5BMl5BanBnXkFtZTcwNzU3ODMzMw@@._V1_.jpg",
+      "width": 2048,
+      "height": 1449
+     }
+    },
+    {
+     "image": {
+      "url": "http://ia.media-imdb.com/images/M/MV5BMjY2MTUyMzgzNF5BMl5BanBnXkFtZTYwOTA3NDYy._V1_.jpg",
+      "width": 440,
+      "height": 178
+     }
+    }
+   ]
+  },
+  "plytlr": {
+   "encodings": {
+    "H.264 480x270": {
+     "format": "H.264 480x270",
+     "url": "http://www.totaleclips.com/Player/Bounce.aspx?eclipid=e61676&bitrateid=461&vendorid=102&type=.mp4"
+    },
+    "H.264 640x360": {
+     "format": "H.264 640x360",
+     "url": "http://www.totaleclips.com/Player/Bounce.aspx?eclipid=e61676&bitrateid=472&vendorid=102&type=.mp4"
+    }
+   },
+   "description": "Trailer for Fight Club",
+   "relatedTitle": {
+    "title": "Fight Club",
+    "type": "feature",
+    "title_id": "tt0137523",
+    "year": "1999",
+    "image": {
+     "width": 336,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+     "height": 500
+    }
+   },
+   "duration_seconds": 120,
+   "slates": [
+    {
+     "width": 266,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTMxMjk1NTI3M15BMl5BanBnXkFtZTcwMTYwNzcyNA@@._V1_.jpg",
+     "height": 200
+    }
+   ],
+   "content_type": "Trailer",
+   "relatedName": {
+    "nconst": "nm0001533",
+    "name": "Meat Loaf",
+    "image": {
+     "width": 285,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+     "height": 400
+    }
+   },
+   "id": "vi781228825",
+   "title": "Fight Club",
+   "@type": "mobile.media.video"
+  },
+  "tAwrd": {},
+  "t250": {},
+  "pulq": {},
+  "triv": {
+   "trivium": "The shot surveying Project Mayhem's destructive equipment lying in underground parking lots was a three-dimensional composition of over 100 photographs of Los Angeles and Century City by special effects photographer Michael Douglas Middleton."
+  },
+  "quot": {
+   "quote": {
+    "lines": [
+     {
+      "stage": "first lines"
+     },
+     {
+      "stage": "Tyler points a gun into the Narrator's mouth"
+     },
+     {
+      "stage": "voiceover",
+      "quote": "People are always asking me if I know Tyler Durden. ",
+      "chars": [
+       {
+        "nconst": "nm0001570",
+        "char": "Narrator"
+       }
+      ]
+     },
+     {
+      "quote": "Three minutes. This is it - ground zero. Would you like to say a few words to mark the occasion? ",
+      "chars": [
+       {
+        "nconst": "nm0000093",
+        "char": "Tyler Durden"
+       }
+      ]
+     },
+     {
+      "quote": "...i... ann... iinn... ff... nnyin... ",
+      "chars": [
+       {
+        "nconst": "nm0001570",
+        "char": "Narrator"
+       }
+      ]
+     },
+     {
+      "stage": "voiceover",
+      "quote": "With a gun barrel between your teeth, you speak only in vowels. ",
+      "chars": [
+       {
+        "nconst": "nm0001570",
+        "char": "Narrator"
+       }
+      ]
+     },
+     {
+      "stage": "Tyler removes the gun from the Narrator's mouth"
+     },
+     {
+      "quote": "I can't think of anything. ",
+      "chars": [
+       {
+        "nconst": "nm0001570",
+        "char": "Narrator"
+       }
+      ]
+     },
+     {
+      "stage": "voiceover",
+      "quote": "For a second I totally forgot about Tyler's whole controlled demolition thing and I wonder how clean that gun is.",
+      "chars": [
+       {
+        "nconst": "nm0001570",
+        "char": "Narrator"
+       }
+      ]
+     }
+    ],
+    "qconst": "qt0479091"
+   }
+  },
+  "goof": {
+   "goof": "In Project Mayhem there is no names, but Bob gets called Bob four times. Twice by Tyler as a waiter and twice by one of the Space Monkey's when he is shot lying on the table."
+  },
+  "crzy": {},
+  "sndt": {},
+  "tgln": {
+   "tagline": "How much can you know about yourself if you've never been in a fight?"
+  },
+  "gnrs": {
+   "genres": [
+    "Drama"
+   ]
+  },
+  "rdat": {
+   "release_date": {
+    "normal": "1999-10-15"
+   }
+  },
+  "lang": {},
+  "altt": {},
+  "loctn": {},
+  "runt": {
+   "runtime": 8340
+  },
+  "altv": {},
+  "sims": {},
+  "conns": {},
+  "imdbWS": {
+   "tconst": "tt0137523"
+  },
+  "crev": {},
+  "ocrev": {}
+ },
+ "data": {
+  "photos": [
+   {
+    "link": "http://www.imdb.com/rg/appphoto/link/media/rm770344448/tt0137523",
+    "image": {
+     "width": 2048,
+     "url": "http://ia.media-imdb.com/images/M/MV5BNDY1MzE3MTI0Nl5BMl5BanBnXkFtZTcwNDIwNTI5Mw@@._V1_.jpg",
+     "height": 1335
+    }
+   },
+   {
+    "link": "http://www.imdb.com/rg/appphoto/link/media/rm334662912/tt0137523",
+    "image": {
+     "width": 2048,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTM4MjA2MzI0OF5BMl5BanBnXkFtZTcwNjU3ODMzMw@@._V1_.jpg",
+     "height": 1365
+    }
+   },
+   {
+    "link": "http://www.imdb.com/rg/appphoto/link/media/rm4283407104/tt0137523",
+    "image": {
+     "width": 276,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTQ2OTAxNjY5MF5BMl5BanBnXkFtZTYwMjY5OTk0._V1_.jpg",
+     "height": 400
+    }
+   },
+   {
+    "link": "http://www.imdb.com/rg/appphoto/link/media/rm301108480/tt0137523",
+    "image": {
+     "width": 2048,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMjk3NTYyMzc4Nl5BMl5BanBnXkFtZTcwODU3ODMzMw@@._V1_.jpg",
+     "height": 1449
+    }
+   },
+   {
+    "link": "http://www.imdb.com/rg/appphoto/link/media/rm317885696/tt0137523",
+    "image": {
+     "width": 2048,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTgxNzY2NjIxOV5BMl5BanBnXkFtZTcwNzU3ODMzMw@@._V1_.jpg",
+     "height": 1449
+    }
+   },
+   {
+    "link": "http://www.imdb.com/rg/appphoto/link/media/rm4108884480/tt0137523",
+    "image": {
+     "width": 440,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMjY2MTUyMzgzNF5BMl5BanBnXkFtZTYwOTA3NDYy._V1_.jpg",
+     "height": 178
+    }
+   }
+  ],
+  "directors_summary": [
+   {
+    "name": {
+     "nconst": "nm0000399",
+     "name": "David Fincher",
+     "image": {
+      "width": 261,
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+      "height": 400
+     }
+    }
+   }
+  ],
+  "user_comment": {
+   "user_rating": 10,
+   "status": "G",
+   "date": "1999-11-29",
+   "user_name": "tyler.td (tyler.td@gmx.de)",
+   "summary": "Probably the best movie of the decade",
+   "user_score": 293,
+   "text": "\nAfter watching this movie I was totally filled with enthusiasm. Fight Club is definitly Fincher's best movie even better than se7en. It's not only the story but the optics which fascinated me. When I had seen it for the second time I could see this movie with the knowledge of the conclusion which is really fascinating as you'll see Fight Club in a totally different perspective. Also great about Fight Club is its soundtrack performed by the Dust Brothers and especially the song 'Where is my mind' by the Pixies which really fit to the end of the movie. Unfortunately Fight Club didn't have much success in Germany but anyway the movie got best reviews of the German press. I also have to mention the brilliance of Ed Norton and Brad Pitt who plays best in roles in which he performs the villain. But it's quiet amazing what Edward Norton is able to do - he is just overwhelming. For that role he has to get the oscar.",
+   "user_location": "Hamburg, Germany",
+   "user_score_count": 484
+  },
+  "certificate": {
+   "certificate": "R",
+   "attr": "(certificate #36857)"
+  },
+  "has": [
+   "more_cast",
+   "trivia",
+   "goofs",
+   "quotes",
+   "more_plot",
+   "parentalguide",
+   "synopsis",
+   "user_comments",
+   "external_reviews",
+   "photos"
+  ],
+  "writers_summary": [
+   {
+    "name": {
+     "nconst": "nm0657333",
+     "name": "Chuck Palahniuk",
+     "image": {
+      "width": 267,
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+      "height": 400
+     }
+    },
+    "attr": "(novel)"
+   },
+   {
+    "name": {
+     "nconst": "nm0880243",
+     "name": "Jim Uhls"
+    },
+    "attr": "(screenplay)"
+   }
+  ],
+  "rating": 8.9,
+  "num_votes": 665486,
+  "tconst": "tt0137523",
+  "genres": [
+   "Drama"
+  ],
+  "best_plot": {
+   "outline": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that transforms into a violent revolution.",
+   "total_summaries": 3
+  },
+  "quote": {
+   "lines": [
+    {
+     "stage": "first lines"
+    },
+    {
+     "stage": "Tyler points a gun into the Narrator's mouth"
+    },
+    {
+     "stage": "voiceover",
+     "quote": "People are always asking me if I know Tyler Durden. ",
+     "chars": [
+      {
+       "nconst": "nm0001570",
+       "char": "Narrator"
+      }
+     ]
+    },
+    {
+     "quote": "Three minutes. This is it - ground zero. Would you like to say a few words to mark the occasion? ",
+     "chars": [
+      {
+       "nconst": "nm0000093",
+       "char": "Tyler Durden"
+      }
+     ]
+    },
+    {
+     "quote": "...i... ann... iinn... ff... nnyin... ",
+     "chars": [
+      {
+       "nconst": "nm0001570",
+       "char": "Narrator"
+      }
+     ]
+    },
+    {
+     "stage": "voiceover",
+     "quote": "With a gun barrel between your teeth, you speak only in vowels. ",
+     "chars": [
+      {
+       "nconst": "nm0001570",
+       "char": "Narrator"
+      }
+     ]
+    },
+    {
+     "stage": "Tyler removes the gun from the Narrator's mouth"
+    },
+    {
+     "quote": "I can't think of anything. ",
+     "chars": [
+      {
+       "nconst": "nm0001570",
+       "char": "Narrator"
+      }
+     ]
+    },
+    {
+     "stage": "voiceover",
+     "quote": "For a second I totally forgot about Tyler's whole controlled demolition thing and I wonder how clean that gun is.",
+     "chars": [
+      {
+       "nconst": "nm0001570",
+       "char": "Narrator"
+      }
+     ]
+    }
+   ],
+   "qconst": "qt0479091"
+  },
+  "can_rate": true,
+  "trailer": {
+   "encodings": {
+    "H.264 480x270": {
+     "format": "H.264 480x270",
+     "url": "http://www.totaleclips.com/Player/Bounce.aspx?eclipid=e61676&bitrateid=461&vendorid=102&type=.mp4"
+    },
+    "H.264 640x360": {
+     "format": "H.264 640x360",
+     "url": "http://www.totaleclips.com/Player/Bounce.aspx?eclipid=e61676&bitrateid=472&vendorid=102&type=.mp4"
+    }
+   },
+   "description": "Trailer for Fight Club",
+   "relatedTitle": {
+    "title": "Fight Club",
+    "type": "feature",
+    "title_id": "tt0137523",
+    "year": "1999",
+    "image": {
+     "width": 336,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+     "height": 500
+    }
+   },
+   "duration_seconds": 120,
+   "slates": [
+    {
+     "width": 266,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTMxMjk1NTI3M15BMl5BanBnXkFtZTcwMTYwNzcyNA@@._V1_.jpg",
+     "height": 200
+    }
+   ],
+   "content_type": "Trailer",
+   "relatedName": {
+    "nconst": "nm0001533",
+    "name": "Meat Loaf",
+    "image": {
+     "width": 285,
+     "url": "http://ia.media-imdb.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+     "height": 400
+    }
+   },
+   "id": "vi781228825",
+   "title": "Fight Club",
+   "@type": "mobile.media.video"
+  },
+  "release_date": {
+   "normal": "1999-10-15"
+  },
+  "trivium": "The shot surveying Project Mayhem's destructive equipment lying in underground parking lots was a three-dimensional composition of over 100 photographs of Los Angeles and Century City by special effects photographer Michael Douglas Middleton.",
+  "goof": "In Project Mayhem there is no names, but Bob gets called Bob four times. Twice by Tyler as a waiter and twice by one of the Space Monkey's when he is shot lying on the table.",
+  "image": {
+   "width": 336,
+   "url": "http://ia.media-imdb.com/images/M/MV5BMjIwNTYzMzE1M15BMl5BanBnXkFtZTcwOTE5Mzg3OA@@._V1_.jpg",
+   "height": 500
+  },
+  "tagline": "How much can you know about yourself if you've never been in a fight?",
+  "runtime": {
+   "time": 8340
+  },
+  "cast_summary": [
+   {
+    "char": "Tyler Durden",
+    "name": {
+     "nconst": "nm0000093",
+     "name": "Brad Pitt",
+     "image": {
+      "width": 1458,
+      "url": "http://ia.media-imdb.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+      "height": 2048
+     }
+    }
+   },
+   {
+    "char": "The Narrator",
+    "name": {
+     "nconst": "nm0001570",
+     "name": "Edward Norton",
+     "image": {
+      "width": 312,
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+      "height": 400
+     }
+    }
+   },
+   {
+    "char": "Marla Singer",
+    "name": {
+     "nconst": "nm0000307",
+     "name": "Helena Bonham Carter",
+     "image": {
+      "width": 281,
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+      "height": 400
+     }
+    }
+   },
+   {
+    "as": "(as Meat Loaf Aday)",
+    "char": "Robert 'Bob' Paulson",
+    "name": {
+     "nconst": "nm0001533",
+     "name": "Meat Loaf",
+     "image": {
+      "width": 285,
+      "url": "http://ia.media-imdb.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+      "height": 400
+     }
+    }
+   }
+  ],
+  "plot": {
+   "outline": "An insomniac office worker and a devil-may-care soap maker form an underground fight club that transforms into a violent revolution.",
+   "more": 1
+  },
+  "news": {
+   "channel": "tt0137523",
+   "total": 2142,
+   "sources": {
+    "ns0000065": {
+     "logo": "http://ia.media-imdb.com/images/M/MV5BMTYwMTA2ODQwNl5BMl5BanBnXkFtZTcwODYwNTMwMw@@._V1._SY140_.jpg",
+     "url": "http://blog.zap2it.com/frominsidethebox/",
+     "label": "Zap2It - From Inside the Box"
+    },
+    "ns0012473": {
+     "logo": "http://ia.media-imdb.com/images/M/MV5BMjA3NzIzNDczNl5BMl5BanBnXkFtZTcwNjMxNzExNA@@._V1.jpg",
+     "url": "http://www.nextmovie.com",
+     "label": "NextMovie"
+    },
+    "ns0000064": {
+     "logo": "http://ia.media-imdb.com/images/M/MV5BMTc3MDIxNjIzOV5BMl5BanBnXkFtZTcwODIxNDQwMg@@._V1._SY140_.jpg",
+     "url": "http://www.afterelton.com",
+     "label": "AfterElton.com"
+    }
+   },
+   "markup": "flat",
+   "label": "Fight Club",
+   "limit": 3,
+   "start": 0,
+   "items": [
+    {
+     "source": "ns0000065",
+     "head": "'Teen Mom 2' recap: Jenelle's get out of jail free card",
+     "id": "ni42608240",
+     "datetime": "2012-12-11T23:39:00Z"
+    },
+    {
+     "source": "ns0000064",
+     "head": "AfterElton Briefs: The \"Man Of Steel\" Trailer, The Rock Hall Inductees, and Should Anderson Wear Meggings?",
+     "id": "ni42604966",
+     "datetime": "2012-12-11T22:45:00Z"
+    },
+    {
+     "source": "ns0012473",
+     "head": "How Edward Norton Signs Autographs",
+     "id": "ni42543392",
+     "datetime": "2012-12-11T03:20:00Z"
+    }
+   ],
+   "@type": "mobile.news.list"
+  },
+  "type": "feature",
+  "title": "Fight Club",
+  "year": "1999"
+ }
+}

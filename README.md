@@ -151,6 +151,31 @@ So the home tab stays empty. The route is kept anyway, because it replaces a `-1
 the app's `tapToATF.homepage.networkErrors` counter) with an immediate valid response; the home
 screen itself is out of scope unless a real 2013 response turns up.
 
+### The title page: reconstructed template, and it renders
+
+Same engine, different document. Opening a title asks for both, at the same moment:
+
+```
+GET https://api.imdbws.com/template/imdb-ios-writable/title-auxiliary-v5b.jstl/render
+    ?minwidth=480&region=PH&tconst=tt0133093&today=2011-04-01
+GET https://app.imdb.com/title/tt0133093/maindetails?api=v1&…&sig=app9-…
+```
+
+The path comes from `data.title_page.jstl`, the layout from `data.title_page.sections` (widgets
+`hero`, `titl`, `pstr`, `arate`, `oplot`, `drct`, `wrt`, `cast`, `phtos`, `gnrs`, `rdat`, `runt`, …).
+The template body cannot be captured for the same reason as the home page (403 on the 2011 AWS3
+signature), so `shim/build-title-aux.py` composes `title-auxiliary.json` from that layout plus
+`md-2012.json`. Because the envelope is unknown it is a superset: the config `sections` with a
+`data` object on every widget, a name→data `widgets` map, and the maindetails `data` at top level.
+
+`Tweak.xm` serves any `api.imdbws.com/.../title-auxiliary*.jstl/render` from that file and refreshes
+`@jstlMeta.timestamp` and `tconst`. Measured on the device (build `2.5-uiprobe`): `200
+route=title-auxiliary.json` (31,052 B), `IMTabletTitlePageViewController` **and**
+`IMTabletTitlePageAuxillaryViewController` appear, and the app then fetches eight cast thumbnails
+from `ia.media-imdb.com` — the widgets received data and laid out a real page. One follow-up is
+still unbuilt: `/title/fullcredits` is requested and answered `404`, so the full cast list is the
+remaining gap on this screen.
+
 ## Two device-specific facts that shape everything here
 
 **1. armv7 dylibs from a modern toolchain must be built `-marm`.** Such a dylib is compiled

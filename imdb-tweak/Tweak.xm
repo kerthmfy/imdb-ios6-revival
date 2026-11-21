@@ -171,7 +171,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.3-claimlog" forKey:@"build"];
+    [d setObject:@"2.5-uiprobe" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -321,6 +321,17 @@ static BOOL IsHomepageRequest(NSURLRequest *request) {
             [path rangeOfString:@"homepage" options:NSCaseInsensitiveSearch].location != NSNotFound);
 }
 
+// The title page is rendered by the same template engine as the home page: the
+// app asks for title-auxiliary-v5b.jstl/render with tconst/region/today and
+// expects the layout from data.title_page.sections, filled per widget.
+static BOOL IsTitleAuxRequest(NSURLRequest *request) {
+    NSString *host = [request.URL.host lowercaseString];
+    if (![host isEqualToString:@"api.imdbws.com"]) return NO;
+    NSString *path = request.URL.path ? request.URL.path : @"";
+    return ([path rangeOfString:@"/template/imdb-ios-writable/"].location != NSNotFound &&
+            [path rangeOfString:@"title-auxiliary" options:NSCaseInsensitiveSearch].location != NSNotFound);
+}
+
 static BOOL IsDashRoute(NSString *path) {
     return ([path rangeOfString:@"maindetails"].location != NSNotFound);
 }
@@ -332,6 +343,7 @@ static NSString *RouteNameForRequest(NSURLRequest *request) {
     if (!path) return nil;
 
     if (IsHomepageRequest(request)) return @"homepage.json";
+    if (IsTitleAuxRequest(request)) return @"title-auxiliary.json";
 
     if ([path isEqualToString:@"/hello"]) return @"hello.json";
 
@@ -427,7 +439,8 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
     // The homepage payload is not the app.imdb.com envelope: it carries
     // @jstlMeta instead of exp, and a stale timestamp is the same kind of trap
     // that exp is on maindetails.
-    if ([name isEqualToString:@"homepage.json"]) {
+    if ([name isEqualToString:@"homepage.json"] ||
+        [name isEqualToString:@"title-auxiliary.json"]) {
         id hobj = [NSJSONSerialization JSONObjectWithData:raw
                                                   options:NSJSONReadingMutableContainers
                                                     error:NULL];
@@ -439,6 +452,13 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
                                                 forKey:@"timestamp"];
                 [(NSMutableDictionary *)meta setObject:[NSNumber numberWithInt:12]
                                                 forKey:@"serverTimeMs"];
+            }
+            // The template is per title; the fixture is one title's data.
+            NSString *jtconst = TconstForRequest(request);
+            if (jtconst) [hd setObject:jtconst forKey:@"tconst"];
+            NSMutableDictionary *jdata = [hd objectForKey:@"data"];
+            if (jtconst && [jdata isKindOfClass:[NSMutableDictionary class]]) {
+                [(NSMutableDictionary *)jdata setObject:jtconst forKey:@"tconst"];
             }
             NSData *hout = [NSJSONSerialization dataWithJSONObject:hd options:0 error:NULL];
             if (hout) {
@@ -679,7 +699,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.3-claimlog" forKey:@"build"];
+    [d setObject:@"2.5-uiprobe" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
@@ -706,6 +726,27 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
                                                                    withObject:nil];
     }
 }
+
+// Which screens actually appear is the only reliable "does it render" signal:
+// there is no screenshot tool on this device, and a page can load its data while
+// still being replaced by an error view.
+%hook UIViewController
+
+- (void)viewDidAppear:(BOOL)animated {
+    NSString *cls = NSStringFromClass([self class]);
+    if (cls) {
+        ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+                   @"screen", @"event",
+                   cls, @"class",
+                   ProbeISO8601(), @"ts",
+                   [NSNumber numberWithInt:(int)getpid()], @"pid",
+                   [NSNumber numberWithBool:animated], @"animated",
+                   nil]);
+    }
+    %orig;
+}
+
+%end
 
 %hook NSURLConnection
 

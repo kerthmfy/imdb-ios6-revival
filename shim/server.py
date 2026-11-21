@@ -79,6 +79,7 @@ TITLE_PATH = re.compile(r"^/title/(tt\d+)/maindetails/?$")
 # The home page is rendered by the template engine on api.imdbws.com, not by
 # app.imdb.com. Its response is a Zulu envelope (@jstlMeta, no exp).
 HOMEPAGE_PATH = re.compile(r"^/template/imdb-ios-writable/.*homepage.*\.jstl/render/?$")
+TITLE_AUX_PATH = re.compile(r"^/template/imdb-ios-writable/.*title-auxiliary.*\.jstl/render/?$")
 
 PROXY_ENABLED = True
 
@@ -116,6 +117,27 @@ def homepage_payload():
     if isinstance(meta, dict):
         meta["timestamp"] = int(time.time())
         meta["serverTimeMs"] = 12
+    return doc
+
+
+def title_aux_payload(tconst):
+    """Reconstructed title auxiliary template (see build-title-aux.py).
+
+    The body was never captured: api.imdbws.com answers the app's 2011 AWS3
+    signature with 403. The fixture is composed from data.title_page.sections
+    and md-2012.json, and the timestamp is refreshed per request for the same
+    reason exp is on maindetails.
+    """
+    doc = load_fixture("title-auxiliary.json")
+    meta = doc.get("@jstlMeta")
+    if isinstance(meta, dict):
+        meta["timestamp"] = int(time.time())
+        meta["serverTimeMs"] = 12
+    if tconst:
+        doc["tconst"] = tconst
+        data = doc.get("data")
+        if isinstance(data, dict):
+            data["tconst"] = tconst
     return doc
 
 
@@ -214,6 +236,9 @@ class ShimHandler(BaseHTTPRequestHandler):
             status, body = 200, json.dumps(maindetails_payload(TITLE_PATH.match(path).group(1))).encode()
         elif host == "api.imdbws.com" and HOMEPAGE_PATH.match(path):
             status, body = 200, json.dumps(homepage_payload()).encode()
+        elif host == "api.imdbws.com" and TITLE_AUX_PATH.match(path):
+            tconst = (parse_qs(parsed.query).get("tconst") or [""])[0]
+            status, body = 200, json.dumps(title_aux_payload(tconst)).encode()
         elif path.rstrip("/") == "/title/maindetails":
             tconst = (parse_qs(parsed.query).get("tconst") or ["tt0133093"])[0]
             status, body = 200, json.dumps(maindetails_payload(tconst)).encode()
