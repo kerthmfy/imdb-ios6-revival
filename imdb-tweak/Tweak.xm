@@ -175,7 +175,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.9-posterprobe" forKey:@"build"];
+    [d setObject:@"3.5-pstrvalue" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -817,7 +817,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.9-posterprobe" forKey:@"build"];
+    [d setObject:@"3.5-pstrvalue" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
@@ -844,6 +844,166 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
                                                                    withObject:nil];
     }
 }
+
+// Parser-side recording (§17): log the payload the auxiliary and homepage
+// controllers actually receive, and what `pstr` resolves to. Hooks live in the
+// app's own classes, so Foundation is never touched.
+static NSString *DescribeValue(id v) {
+    if (!v) return @"nil";
+    if ([v isKindOfClass:[NSDictionary class]]) {
+        NSArray *keys = [(NSDictionary *)v allKeys];
+        NSArray *head = [keys count] > 12 ? [keys subarrayWithRange:NSMakeRange(0, 12)] : keys;
+        return [NSString stringWithFormat:@"dict(%@)%@",
+                [head componentsJoinedByString:@","],
+                [keys count] > 12 ? @",..." : @""];
+    }
+    if ([v isKindOfClass:[NSArray class]]) {
+        return [NSString stringWithFormat:@"array(%lu)", (unsigned long)[(NSArray *)v count]];
+    }
+    if ([v isKindOfClass:[NSString class]]) return [NSString stringWithFormat:@"string(%@)", v];
+    return NSStringFromClass([v class]);
+}
+
+static void LogPayload(id obj, NSString *where) {
+    if (!obj) return;
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"payload" forKey:@"event"];
+    [d setObject:where forKey:@"where"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
+    [d setObject:NSStringFromClass([obj class]) forKey:@"class"];
+    [d setObject:[NSNumber numberWithBool:[obj isKindOfClass:[NSDictionary class]]] forKey:@"is_dict"];
+
+    if ([obj isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *dict = (NSDictionary *)obj;
+        NSArray *keys = [dict allKeys];
+        [d setObject:[NSNumber numberWithUnsignedInteger:[keys count]] forKey:@"key_count"];
+        [d setObject:[keys componentsJoinedByString:@","] forKey:@"keys"];
+        id pstr = [dict objectForKey:@"pstr"];
+        [d setObject:DescribeValue(pstr) forKey:@"pstr"];
+        if ([pstr isKindOfClass:[NSDictionary class]]) {
+            id img = [(NSDictionary *)pstr objectForKey:@"image"];
+            if ([img isKindOfClass:[NSDictionary class]]) {
+                id u = [(NSDictionary *)img objectForKey:@"url"];
+                if ([u isKindOfClass:[NSString class]]) [d setObject:u forKey:@"pstr_image"];
+            }
+        }
+        [d setObject:DescribeValue([dict objectForKey:@"sections"]) forKey:@"sections"];
+        [d setObject:DescribeValue([dict objectForKey:@"widgets"]) forKey:@"widgets"];
+        [d setObject:DescribeValue([dict objectForKey:@"data"]) forKey:@"data"];
+    }
+    ProbeEmit(d);
+}
+
+// IMDataWrapper is the parser's data path: it wraps a dictionary and serves
+// objectForKey:/dictionaryForKey:/arrayForKey:/stringForKey:. Hooking it records
+// what the layout asks for, per widget, without touching Foundation.
+static NSMutableSet *gWrapSeen = nil;
+static NSLock *gWrapLock = nil;
+
+static void LogWrap(NSString *op, NSString *key, id value) {
+    if (!key || ![key isKindOfClass:[NSString class]]) return;
+    if (!gWrapSeen) {
+        gWrapSeen = [[NSMutableSet alloc] init];
+        gWrapLock = [[NSLock alloc] init];
+    }
+    NSString *sig = [NSString stringWithFormat:@"%@|%@", op, key];
+    BOOL seen = NO;
+    [gWrapLock lock];
+    seen = [gWrapSeen containsObject:sig];
+    if (!seen && [gWrapSeen count] < 600) [gWrapSeen addObject:sig];
+    [gWrapLock unlock];
+    if (seen) return;
+
+    ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+               @"lookup", @"event",
+               op, @"op",
+               key, @"key",
+               DescribeValue(value), @"value",
+               ProbeISO8601(), @"ts",
+               [NSNumber numberWithInt:(int)getpid()], @"pid",
+               nil]);
+}
+
+%hook IMDataWrapper
+
+- (id)initWithDictionary:(id)dict {
+    if ([dict isKindOfClass:[NSDictionary class]]) {
+        NSMutableDictionary *d = [NSMutableDictionary dictionary];
+        [d setObject:@"wrap" forKey:@"event"];
+        [d setObject:[[(NSDictionary *)dict allKeys] componentsJoinedByString:@","] forKey:@"keys"];
+        [d setObject:[NSNumber numberWithUnsignedInteger:[(NSDictionary *)dict count]] forKey:@"key_count"];
+        [d setObject:ProbeISO8601() forKey:@"ts"];
+        [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
+        // What `pstr` actually resolves to, whenever it is present.
+        id pstr = [(NSDictionary *)dict objectForKey:@"pstr"];
+        if (pstr) {
+            [d setObject:DescribeValue(pstr) forKey:@"pstr"];
+            if ([pstr isKindOfClass:[NSDictionary class]]) {
+                id img = [(NSDictionary *)pstr objectForKey:@"image"];
+                if ([img isKindOfClass:[NSDictionary class]]) {
+                    id u = [(NSDictionary *)img objectForKey:@"url"];
+                    if ([u isKindOfClass:[NSString class]]) [d setObject:u forKey:@"pstr_image"];
+                }
+            }
+        }
+        ProbeEmit(d);
+    }
+    return %orig;
+}
+
+- (id)objectForKey:(id)key {
+    id v = %orig;
+    LogWrap(@"objectForKey", key, v);
+    return v;
+}
+
+- (id)dictionaryForKey:(id)key {
+    id v = %orig;
+    LogWrap(@"dictionaryForKey", key, v);
+    return v;
+}
+
+- (id)arrayForKey:(id)key {
+    id v = %orig;
+    LogWrap(@"arrayForKey", key, v);
+    return v;
+}
+
+- (id)stringForKey:(id)key {
+    id v = %orig;
+    LogWrap(@"stringForKey", key, v);
+    return v;
+}
+
+%end
+
+%hook IMTabletConstPageAuxillaryViewController
+
+- (void)setData:(id)data {
+    LogPayload(data, @"aux-setData");
+    %orig;
+}
+
+%end
+
+%hook IMTabletTitlePageAuxillaryViewController
+
+- (void)handleResponse:(id)response {
+    LogPayload(response, @"aux-handleResponse");
+    %orig;
+}
+
+%end
+
+%hook IMTabletFrontPageViewController
+
+- (void)setDataSource:(id)source {
+    LogPayload(source, @"frontpage-setDataSource");
+    %orig;
+}
+
+%end
 
 // The poster widget never requests its image, so log what it is actually handed:
 // an empty/nil data object means the response never reached it, a populated one
