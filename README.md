@@ -193,8 +193,12 @@ second open four `route=image-cache`. A failed relay answers `404` and is logged
 `image-fail(<reason>)` — the first fetch after a cold relaunch can time out (`-1001`) and then
 succeeds on the next open.
 
-The poster is a separate, unresolved case: the app never requests its image at all, so the widget is
-not laying out from `pstr.data` even with `image`, `poster`, `imageURL` and `posterURL` all supplied.
+The poster is a separate, unresolved case: the app never requests its image at all. A
+`setWidgetData:` hook on `IMTitlePagePosterWidget` logs **zero calls**, so the widget is never even
+created — the data shape is not the reason. Supplying the data nested per widget, as a name-keyed
+`widgets` map, and as name-keyed top-level keys, plus `image`/`poster`/`imageURL`/`posterURL`
+aliases, changed nothing. The layout the app builds omits that widget; finding the lookup that feeds
+it needs a recording hook, not more guessing.
 
 ## Two device-specific facts that shape everything here
 

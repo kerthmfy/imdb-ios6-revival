@@ -175,7 +175,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.8-relaycache" forKey:@"build"];
+    [d setObject:@"2.9-posterprobe" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -817,7 +817,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.8-relaycache" forKey:@"build"];
+    [d setObject:@"2.9-posterprobe" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
@@ -844,6 +844,35 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
                                                                    withObject:nil];
     }
 }
+
+// The poster widget never requests its image, so log what it is actually handed:
+// an empty/nil data object means the response never reached it, a populated one
+// means the widget is gated on something else.
+%hook IMTitlePagePosterWidget
+
+- (void)setWidgetData:(id)data {
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"widgetdata" forKey:@"event"];
+    [d setObject:@"IMTitlePagePosterWidget" forKey:@"class"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
+    if ([data isKindOfClass:[NSDictionary class]]) {
+        [d setObject:[NSArray arrayWithArray:[(NSDictionary *)data allKeys]] forKey:@"keys"];
+        id img = [(NSDictionary *)data objectForKey:@"image"];
+        if ([img isKindOfClass:[NSDictionary class]]) {
+            id u = [(NSDictionary *)img objectForKey:@"url"];
+            if ([u isKindOfClass:[NSString class]]) [d setObject:u forKey:@"image_url"];
+        }
+    } else if (data) {
+        [d setObject:NSStringFromClass([data class]) forKey:@"data_class"];
+    } else {
+        [d setObject:@"nil" forKey:@"data_class"];
+    }
+    ProbeEmit(d);
+    %orig;
+}
+
+%end
 
 // Which screens actually appear is the only reliable "does it render" signal:
 // there is no screenshot tool on this device, and a page can load its data while
