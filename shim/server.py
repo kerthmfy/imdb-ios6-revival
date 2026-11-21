@@ -141,6 +141,14 @@ def title_aux_payload(tconst):
     return doc
 
 
+def fullcredits_payload():
+    """Reconstructed /title/fullcredits (a superset: see build-fullcredits.py).
+    exp must be in the future or the legacy client treats it as stale."""
+    doc = load_fixture("fullcredits.json")
+    doc["exp"] = int(time.time()) + 3600
+    return doc
+
+
 def maindetails_payload(tconst):
     """Archived maindetails, retargeted at the requested id.
 
@@ -239,6 +247,8 @@ class ShimHandler(BaseHTTPRequestHandler):
         elif host == "api.imdbws.com" and TITLE_AUX_PATH.match(path):
             tconst = (parse_qs(parsed.query).get("tconst") or [""])[0]
             status, body = 200, json.dumps(title_aux_payload(tconst)).encode()
+        elif path.rstrip("/") == "/title/fullcredits":
+            status, body = 200, json.dumps(fullcredits_payload()).encode()
         elif path.rstrip("/") == "/title/maindetails":
             tconst = (parse_qs(parsed.query).get("tconst") or ["tt0133093"])[0]
             status, body = 200, json.dumps(maindetails_payload(tconst)).encode()

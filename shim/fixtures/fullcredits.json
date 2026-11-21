@@ -1,0 +1,1144 @@
+{
+ "exp": 1795224524,
+ "@meta": {
+  "serverTimeMs": 21,
+  "requestId": "imdb-revival-local"
+ },
+ "data": {
+  "tconst": "tt0137523",
+  "title": "Fight Club",
+  "groups": [
+   {
+    "name": "Cast",
+    "title": "Cast",
+    "category": "cast",
+    "totalCreditsCount": 4,
+    "credits": [
+     {
+      "name": {
+       "nconst": "nm0000093",
+       "name": "Brad Pitt",
+       "image": {
+        "width": 1458,
+        "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+        "height": 2048
+       }
+      },
+      "char": "Tyler Durden",
+      "character": "Tyler Durden",
+      "characters": [
+       "Tyler Durden"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 1458,
+       "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001570",
+       "name": "Edward Norton",
+       "image": {
+        "width": 312,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "The Narrator",
+      "character": "The Narrator",
+      "characters": [
+       "The Narrator"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 312,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0000307",
+       "name": "Helena Bonham Carter",
+       "image": {
+        "width": 281,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Marla Singer",
+      "character": "Marla Singer",
+      "characters": [
+       "Marla Singer"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 281,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Robert 'Bob' Paulson",
+      "character": "Robert 'Bob' Paulson",
+      "characters": [
+       "Robert 'Bob' Paulson"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "(as Meat Loaf Aday)",
+      "attribution": "",
+      "image": {
+       "width": 285,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "groups": [
+     {
+      "name": {
+       "nconst": "nm0000093",
+       "name": "Brad Pitt",
+       "image": {
+        "width": 1458,
+        "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+        "height": 2048
+       }
+      },
+      "char": "Tyler Durden",
+      "character": "Tyler Durden",
+      "characters": [
+       "Tyler Durden"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 1458,
+       "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001570",
+       "name": "Edward Norton",
+       "image": {
+        "width": 312,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "The Narrator",
+      "character": "The Narrator",
+      "characters": [
+       "The Narrator"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 312,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0000307",
+       "name": "Helena Bonham Carter",
+       "image": {
+        "width": 281,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Marla Singer",
+      "character": "Marla Singer",
+      "characters": [
+       "Marla Singer"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 281,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Robert 'Bob' Paulson",
+      "character": "Robert 'Bob' Paulson",
+      "characters": [
+       "Robert 'Bob' Paulson"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "(as Meat Loaf Aday)",
+      "attribution": "",
+      "image": {
+       "width": 285,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "list": [
+     {
+      "name": {
+       "nconst": "nm0000093",
+       "name": "Brad Pitt",
+       "image": {
+        "width": 1458,
+        "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+        "height": 2048
+       }
+      },
+      "char": "Tyler Durden",
+      "character": "Tyler Durden",
+      "characters": [
+       "Tyler Durden"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 1458,
+       "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001570",
+       "name": "Edward Norton",
+       "image": {
+        "width": 312,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "The Narrator",
+      "character": "The Narrator",
+      "characters": [
+       "The Narrator"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 312,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0000307",
+       "name": "Helena Bonham Carter",
+       "image": {
+        "width": 281,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Marla Singer",
+      "character": "Marla Singer",
+      "characters": [
+       "Marla Singer"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 281,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Robert 'Bob' Paulson",
+      "character": "Robert 'Bob' Paulson",
+      "characters": [
+       "Robert 'Bob' Paulson"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "(as Meat Loaf Aday)",
+      "attribution": "",
+      "image": {
+       "width": 285,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ]
+   },
+   {
+    "name": "Directed by",
+    "title": "Directed by",
+    "category": "directed by",
+    "totalCreditsCount": 1,
+    "credits": [
+     {
+      "name": {
+       "nconst": "nm0000399",
+       "name": "David Fincher",
+       "image": {
+        "width": 261,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 261,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "groups": [
+     {
+      "name": {
+       "nconst": "nm0000399",
+       "name": "David Fincher",
+       "image": {
+        "width": 261,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 261,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "list": [
+     {
+      "name": {
+       "nconst": "nm0000399",
+       "name": "David Fincher",
+       "image": {
+        "width": 261,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 261,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ]
+   },
+   {
+    "name": "Writing credits",
+    "title": "Writing credits",
+    "category": "writing credits",
+    "totalCreditsCount": 2,
+    "credits": [
+     {
+      "name": {
+       "nconst": "nm0657333",
+       "name": "Chuck Palahniuk",
+       "image": {
+        "width": 267,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(novel)",
+      "attribution": "(novel)",
+      "image": {
+       "width": 267,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0880243",
+       "name": "Jim Uhls"
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(screenplay)",
+      "attribution": "(screenplay)"
+     }
+    ],
+    "groups": [
+     {
+      "name": {
+       "nconst": "nm0657333",
+       "name": "Chuck Palahniuk",
+       "image": {
+        "width": 267,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(novel)",
+      "attribution": "(novel)",
+      "image": {
+       "width": 267,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0880243",
+       "name": "Jim Uhls"
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(screenplay)",
+      "attribution": "(screenplay)"
+     }
+    ],
+    "list": [
+     {
+      "name": {
+       "nconst": "nm0657333",
+       "name": "Chuck Palahniuk",
+       "image": {
+        "width": 267,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(novel)",
+      "attribution": "(novel)",
+      "image": {
+       "width": 267,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0880243",
+       "name": "Jim Uhls"
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(screenplay)",
+      "attribution": "(screenplay)"
+     }
+    ]
+   }
+  ],
+  "credits": [
+   {
+    "name": "Cast",
+    "title": "Cast",
+    "category": "cast",
+    "totalCreditsCount": 4,
+    "credits": [
+     {
+      "name": {
+       "nconst": "nm0000093",
+       "name": "Brad Pitt",
+       "image": {
+        "width": 1458,
+        "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+        "height": 2048
+       }
+      },
+      "char": "Tyler Durden",
+      "character": "Tyler Durden",
+      "characters": [
+       "Tyler Durden"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 1458,
+       "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001570",
+       "name": "Edward Norton",
+       "image": {
+        "width": 312,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "The Narrator",
+      "character": "The Narrator",
+      "characters": [
+       "The Narrator"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 312,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0000307",
+       "name": "Helena Bonham Carter",
+       "image": {
+        "width": 281,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Marla Singer",
+      "character": "Marla Singer",
+      "characters": [
+       "Marla Singer"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 281,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Robert 'Bob' Paulson",
+      "character": "Robert 'Bob' Paulson",
+      "characters": [
+       "Robert 'Bob' Paulson"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "(as Meat Loaf Aday)",
+      "attribution": "",
+      "image": {
+       "width": 285,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "groups": [
+     {
+      "name": {
+       "nconst": "nm0000093",
+       "name": "Brad Pitt",
+       "image": {
+        "width": 1458,
+        "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+        "height": 2048
+       }
+      },
+      "char": "Tyler Durden",
+      "character": "Tyler Durden",
+      "characters": [
+       "Tyler Durden"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 1458,
+       "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001570",
+       "name": "Edward Norton",
+       "image": {
+        "width": 312,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "The Narrator",
+      "character": "The Narrator",
+      "characters": [
+       "The Narrator"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 312,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0000307",
+       "name": "Helena Bonham Carter",
+       "image": {
+        "width": 281,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Marla Singer",
+      "character": "Marla Singer",
+      "characters": [
+       "Marla Singer"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 281,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Robert 'Bob' Paulson",
+      "character": "Robert 'Bob' Paulson",
+      "characters": [
+       "Robert 'Bob' Paulson"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "(as Meat Loaf Aday)",
+      "attribution": "",
+      "image": {
+       "width": 285,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "list": [
+     {
+      "name": {
+       "nconst": "nm0000093",
+       "name": "Brad Pitt",
+       "image": {
+        "width": 1458,
+        "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+        "height": 2048
+       }
+      },
+      "char": "Tyler Durden",
+      "character": "Tyler Durden",
+      "characters": [
+       "Tyler Durden"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 1458,
+       "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+       "height": 2048
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001570",
+       "name": "Edward Norton",
+       "image": {
+        "width": 312,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "The Narrator",
+      "character": "The Narrator",
+      "characters": [
+       "The Narrator"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 312,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0000307",
+       "name": "Helena Bonham Carter",
+       "image": {
+        "width": 281,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Marla Singer",
+      "character": "Marla Singer",
+      "characters": [
+       "Marla Singer"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 281,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0001533",
+       "name": "Meat Loaf",
+       "image": {
+        "width": 285,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "Robert 'Bob' Paulson",
+      "character": "Robert 'Bob' Paulson",
+      "characters": [
+       "Robert 'Bob' Paulson"
+      ],
+      "hasCharacter": true,
+      "job": "",
+      "as": "(as Meat Loaf Aday)",
+      "attribution": "",
+      "image": {
+       "width": 285,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ]
+   },
+   {
+    "name": "Directed by",
+    "title": "Directed by",
+    "category": "directed by",
+    "totalCreditsCount": 1,
+    "credits": [
+     {
+      "name": {
+       "nconst": "nm0000399",
+       "name": "David Fincher",
+       "image": {
+        "width": 261,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 261,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "groups": [
+     {
+      "name": {
+       "nconst": "nm0000399",
+       "name": "David Fincher",
+       "image": {
+        "width": 261,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 261,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ],
+    "list": [
+     {
+      "name": {
+       "nconst": "nm0000399",
+       "name": "David Fincher",
+       "image": {
+        "width": 261,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "",
+      "attribution": "",
+      "image": {
+       "width": 261,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTc1NDkwMTQ2MF5BMl5BanBnXkFtZTcwMzY0ODkyMg@@._V1_.jpg",
+       "height": 400
+      }
+     }
+    ]
+   },
+   {
+    "name": "Writing credits",
+    "title": "Writing credits",
+    "category": "writing credits",
+    "totalCreditsCount": 2,
+    "credits": [
+     {
+      "name": {
+       "nconst": "nm0657333",
+       "name": "Chuck Palahniuk",
+       "image": {
+        "width": 267,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(novel)",
+      "attribution": "(novel)",
+      "image": {
+       "width": 267,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0880243",
+       "name": "Jim Uhls"
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(screenplay)",
+      "attribution": "(screenplay)"
+     }
+    ],
+    "groups": [
+     {
+      "name": {
+       "nconst": "nm0657333",
+       "name": "Chuck Palahniuk",
+       "image": {
+        "width": 267,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(novel)",
+      "attribution": "(novel)",
+      "image": {
+       "width": 267,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0880243",
+       "name": "Jim Uhls"
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(screenplay)",
+      "attribution": "(screenplay)"
+     }
+    ],
+    "list": [
+     {
+      "name": {
+       "nconst": "nm0657333",
+       "name": "Chuck Palahniuk",
+       "image": {
+        "width": 267,
+        "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+        "height": 400
+       }
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(novel)",
+      "attribution": "(novel)",
+      "image": {
+       "width": 267,
+       "url": "https://m.media-amazon.com/images/M/MV5BMTQ4MjMyMjE3NV5BMl5BanBnXkFtZTcwODUxMzc1MQ@@._V1_.jpg",
+       "height": 400
+      }
+     },
+     {
+      "name": {
+       "nconst": "nm0880243",
+       "name": "Jim Uhls"
+      },
+      "char": "",
+      "character": "",
+      "characters": [],
+      "hasCharacter": false,
+      "job": "",
+      "as": "(screenplay)",
+      "attribution": "(screenplay)"
+     }
+    ]
+   }
+  ],
+  "cast": [
+   {
+    "name": {
+     "nconst": "nm0000093",
+     "name": "Brad Pitt",
+     "image": {
+      "width": 1458,
+      "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+      "height": 2048
+     }
+    },
+    "char": "Tyler Durden",
+    "character": "Tyler Durden",
+    "characters": [
+     "Tyler Durden"
+    ],
+    "hasCharacter": true,
+    "job": "",
+    "as": "",
+    "attribution": "",
+    "image": {
+     "width": 1458,
+     "url": "https://m.media-amazon.com/images/M/MV5BMjA2ODgwMjk5Ml5BMl5BanBnXkFtZTcwMjE5NzAzNw@@._V1_.jpg",
+     "height": 2048
+    }
+   },
+   {
+    "name": {
+     "nconst": "nm0001570",
+     "name": "Edward Norton",
+     "image": {
+      "width": 312,
+      "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+      "height": 400
+     }
+    },
+    "char": "The Narrator",
+    "character": "The Narrator",
+    "characters": [
+     "The Narrator"
+    ],
+    "hasCharacter": true,
+    "job": "",
+    "as": "",
+    "attribution": "",
+    "image": {
+     "width": 312,
+     "url": "https://m.media-amazon.com/images/M/MV5BMTYwNjQ5MTI1NF5BMl5BanBnXkFtZTcwMzU5MTI2Mw@@._V1_.jpg",
+     "height": 400
+    }
+   },
+   {
+    "name": {
+     "nconst": "nm0000307",
+     "name": "Helena Bonham Carter",
+     "image": {
+      "width": 281,
+      "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+      "height": 400
+     }
+    },
+    "char": "Marla Singer",
+    "character": "Marla Singer",
+    "characters": [
+     "Marla Singer"
+    ],
+    "hasCharacter": true,
+    "job": "",
+    "as": "",
+    "attribution": "",
+    "image": {
+     "width": 281,
+     "url": "https://m.media-amazon.com/images/M/MV5BMTUzMzUzMDg5MV5BMl5BanBnXkFtZTcwMDA5NDMwNA@@._V1_.jpg",
+     "height": 400
+    }
+   },
+   {
+    "name": {
+     "nconst": "nm0001533",
+     "name": "Meat Loaf",
+     "image": {
+      "width": 285,
+      "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+      "height": 400
+     }
+    },
+    "char": "Robert 'Bob' Paulson",
+    "character": "Robert 'Bob' Paulson",
+    "characters": [
+     "Robert 'Bob' Paulson"
+    ],
+    "hasCharacter": true,
+    "job": "",
+    "as": "(as Meat Loaf Aday)",
+    "attribution": "",
+    "image": {
+     "width": 285,
+     "url": "https://m.media-amazon.com/images/M/MV5BMTIzNTQ4MjYyOV5BMl5BanBnXkFtZTcwNzgwNTEzMg@@._V1_.jpg",
+     "height": 400
+    }
+   }
+  ],
+  "totalCreditsCount": 7
+ }
+}

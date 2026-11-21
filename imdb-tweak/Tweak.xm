@@ -171,7 +171,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"2.5-uiprobe" forKey:@"build"];
+    [d setObject:@"2.7-imageproxy" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -332,6 +332,24 @@ static BOOL IsTitleAuxRequest(NSURLRequest *request) {
             [path rangeOfString:@"title-auxiliary" options:NSCaseInsensitiveSearch].location != NSNotFound);
 }
 
+// Actor thumbnails and posters. The app composes these URLs itself as
+// http://ia.media-imdb.com/images/... regardless of the host in the fixture, and
+// that origin now answers plain http with 403, so every photo stays blank. The
+// same path over https on m.media-amazon.com still returns the JPEG (§19).
+static BOOL IsImageRequest(NSURLRequest *request) {
+    NSString *host = [request.URL.host lowercaseString];
+    if (![host isEqualToString:@"ia.media-imdb.com"]) return NO;
+    return [request.URL.path hasPrefix:@"/images/"];
+}
+
+static NSURL *LiveImageURL(NSURLRequest *request) {
+    NSString *path = request.URL.path ? request.URL.path : @"/images/";
+    NSString *query = request.URL.query;
+    NSString *s = [NSString stringWithFormat:@"https://m.media-amazon.com%@%@", path,
+                   [query length] ? [@"?" stringByAppendingString:query] : @""];
+    return [NSURL URLWithString:s];
+}
+
 static BOOL IsDashRoute(NSString *path) {
     return ([path rangeOfString:@"maindetails"].location != NSNotFound);
 }
@@ -346,6 +364,9 @@ static NSString *RouteNameForRequest(NSURLRequest *request) {
     if (IsTitleAuxRequest(request)) return @"title-auxiliary.json";
 
     if ([path isEqualToString:@"/hello"]) return @"hello.json";
+    // The title page's cast list (and the actor photos) comes from this route,
+    // asked in parallel with maindetails; without it the section stays empty.
+    if ([path isEqualToString:@"/title/fullcredits"]) return @"fullcredits.json";
 
     if ([path hasPrefix:@"/title/"] && IsDashRoute(path)) return @"md-2012.json";
     if ([path isEqualToString:@"/title/maindetails"]) return @"md-2012.json";
@@ -571,13 +592,15 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     // exactly the ones the app asks for.
     BOOL claimsTemplate = [host isEqualToString:@"api.imdbws.com"] &&
                           [[request URL].path hasPrefix:@"/template/"];
+    BOOL claimsImage = IsImageRequest(request);
 
-    if (claimsApp || claimsSuggests || claimsTemplate) {
+    if (claimsApp || claimsSuggests || claimsTemplate || claimsImage) {
         // Recorded at claim time as well as at serve time: a request that is
         // claimed and then cancelled by the app never reaches startLoading, and
         // its absence would read as "the app never asked for it".
         NSString *match = claimsTemplate ? @"api.imdbws.com/template"
-                                         : (claimsApp ? @"app.imdb.com" : @"suggests");
+                                         : (claimsImage ? @"ia.media-imdb.com/images"
+                                                        : (claimsApp ? @"app.imdb.com" : @"suggests"));
         ProbeLogRequest(request, @"claim",
                         [NSDictionary dictionaryWithObject:match forKey:@"claim"]);
         return YES;
@@ -601,6 +624,14 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     // not block on it.
     if (IsSuggestsRequest(request)) {
         [NSThread detachNewThreadSelector:@selector(runLiveSuggests)
+                                 toTarget:self
+                               withObject:nil];
+        return;
+    }
+
+    // Photos are binary and slow: relay them on their own thread too.
+    if (IsImageRequest(request)) {
+        [NSThread detachNewThreadSelector:@selector(runImage)
                                  toTarget:self
                                withObject:nil];
         return;
@@ -637,6 +668,60 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
 - (void)stopLoading {
     _cancelled = YES;
+}
+
+// Worker thread: relay a photo from the https origin that still serves it.
+- (void)runImage {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSURLRequest *request = [[self request] retain];
+
+    NSURL *live = LiveImageURL(request);
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:live];
+    [req setTimeoutInterval:8.0];
+    [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
+    [req setValue:@"IMDb/3.4.2 (iPad; iPhone OS 6.1.3)" forHTTPHeaderField:@"User-Agent"];
+    [NSURLProtocol setProperty:[NSNumber numberWithBool:YES] forKey:kServedKey inRequest:req];
+
+    NSHTTPURLResponse *resp = nil;
+    NSError *err = nil;
+    NSData *body = [NSURLConnection sendSynchronousRequest:req
+                                         returningResponse:(NSURLResponse **)&resp
+                                                     error:&err];
+    NSInteger status = resp ? [resp statusCode] : 0;
+    NSString *ctype = resp ? [[resp allHeaderFields] objectForKey:@"Content-Type"] : nil;
+    if (!ctype) ctype = @"image/jpeg";
+    BOOL ok = (status == 200 && [body length] > 0);
+
+    NSString *route = ok ? @"image-live"
+                         : [NSString stringWithFormat:@"image-fail(%@)",
+                            err ? [NSString stringWithFormat:@"%@ %ld", [err domain], (long)[err code]]
+                                : [NSString stringWithFormat:@"status %ld", (long)status]];
+    ProbeLogRequest(request, @"serve",
+                    [NSDictionary dictionaryWithObjectsAndKeys:
+                     route, @"route",
+                     [NSNumber numberWithInteger:ok ? 200 : 404], @"served_status",
+                     [NSNumber numberWithUnsignedInteger:[body length]], @"served_bytes",
+                     [live absoluteString], @"live_url",
+                     nil]);
+
+    if (!_cancelled) {
+        NSInteger outStatus = ok ? 200 : 404;
+        NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
+                                 ctype, @"Content-Type",
+                                 [NSString stringWithFormat:@"%lu", (unsigned long)[body length]], @"Content-Length",
+                                 nil];
+        NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
+                                                            statusCode:outStatus
+                                                           HTTPVersion:@"HTTP/1.1"
+                                                          headerFields:headers];
+        [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageAllowed];
+        if ([body length]) [[self client] URLProtocol:self didLoadData:body];
+        [[self client] URLProtocolDidFinishLoading:self];
+        [out release];
+    }
+
+    [request release];
+    [pool release];
 }
 
 // Worker thread: try the live host, log which side answered, deliver either way.
@@ -699,7 +784,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"2.5-uiprobe" forKey:@"build"];
+    [d setObject:@"2.7-imageproxy" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")

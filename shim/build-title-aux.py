@@ -32,6 +32,23 @@ def load():
     return cfg, md
 
 
+def modern_image(obj):
+    """Point image URLs at the host that still serves them.
+
+    The 2012 fixtures use `http://ia.media-imdb.com/...`; that host now answers
+    plain http with 403 (CloudFront), so the app's thumbnails and posters come
+    back blank. The same paths over https on m.media-amazon.com return the JPEG,
+    and m.media-amazon.com is already reached over TLS from this device.
+    """
+    if isinstance(obj, dict):
+        return {k: modern_image(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [modern_image(v) for v in obj]
+    if isinstance(obj, str) and "ia.media-imdb.com" in obj:
+        return obj.replace("http://ia.media-imdb.com/", "https://m.media-amazon.com/")
+    return obj
+
+
 def widget_data(md):
     """Per-widget `data`, keyed by the widget names the config uses."""
     plot = md.get("plot") or {}
@@ -135,6 +152,7 @@ def main():
         "widgets": data,
         "data": md,
     }
+    payload = modern_image(payload)
     OUT.write_text(json.dumps(payload, indent=1, sort_keys=False) + "\n")
     print(f"wrote {OUT.relative_to(ROOT.parent.parent)} "
           f"({OUT.stat().st_size} B, {len(data)} widget names)")
