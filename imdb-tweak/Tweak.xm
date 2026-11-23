@@ -108,6 +108,19 @@ static NSString *ProbeISO8601(void) {
     return [NSString stringWithUTF8String:buf];
 }
 
+// Every answer this tweak hands back is for the page that is open right now, so
+// none of it may be stored: a cached body is how the same URL kept showing the
+// old title after the data behind it changed.
+static NSDictionary *ResponseHeaders(NSString *ctype, NSUInteger length) {
+    return [NSDictionary dictionaryWithObjectsAndKeys:
+            (ctype ? ctype : @"application/json"), @"Content-Type",
+            [NSString stringWithFormat:@"%lu", (unsigned long)length], @"Content-Length",
+            @"no-store, no-cache, must-revalidate", @"Cache-Control",
+            @"no-cache", @"Pragma",
+            @"0", @"Expires",
+            nil];
+}
+
 // One JSON object per line describing a request. headers and body are what the
 // 1.x build lacked; both are needed to rebuild a route faithfully.
 static void ProbeLogRequest(NSURLRequest *request, NSString *src, NSDictionary *extra) {
@@ -178,7 +191,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"3.9-fullcredits" forKey:@"build"];
+    [d setObject:@"4.1-nofixturecache" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -238,6 +251,7 @@ static NSString *LoadTLSFix(void) {
 // One synchronous fetch, logged as a `livetest` line. Runs on a background
 // thread so a dead host cannot stall the launch.
 static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSString **errOut);
+static NSString *TitleInfoSource(void);
 static NSData *ServeRoute(NSURLRequest *request, NSDictionary *titleInfo,
                           NSInteger *statusOut, NSString **routeOut, NSString **ctypeOut);
 static NSString *FirstWidgetTitleIn(id node);
@@ -314,7 +328,11 @@ static NSString *FirstWidgetTitleIn(id node);
     if (err) {
         [d setObject:[NSNumber numberWithInteger:[err code]] forKey:@"error_code"];
         [d setObject:[[err userInfo] description] forKey:@"error"];
-        [d setObject:@"tls-wall" forKey:@"verdict"];
+        // -1012 is not a handshake failure: the connection completed and the
+        // host answered 401, so the host is reachable and only a key is missing
+        // (confirmed from the Mac: OMDb and TMDB both answer 401 JSON).
+        [d setObject:([err code] == -1012 ? @"reachable-auth" : @"tls-wall")
+               forKey:@"verdict"];
     } else {
         [d setObject:[NSNumber numberWithInteger:[resp statusCode]] forKey:@"status"];
         [d setObject:[NSNumber numberWithUnsignedInteger:[bodyIn length]] forKey:@"bytes"];
@@ -370,6 +388,14 @@ static NSString *FirstWidgetTitleIn(id node);
                     dataUsingEncoding:NSUTF8StringEncoding] retain];
     [self probeURL:@"https://api.graphql.imdb.com/" label:@"graphql-api" bypassTweak:YES
             method:@"POST" body:gql ctype:@"application/json" timeout:12];
+
+    // The two third-party APIs that could fill the rest of the title page. No
+    // key is sent on purpose: what matters here is whether the handshake works
+    // at all, and a 401/403 with a JSON body is a pass (status, no NSError).
+    [self probeURL:@"https://www.omdbapi.com/?i=tt0133093&plot=short" label:@"omdb-nokey" bypassTweak:YES
+            method:@"GET" body:nil ctype:nil timeout:12];
+    [self probeURL:@"https://api.themoviedb.org/3/find/tt0133093?external_source=imdb_id" label:@"tmdb-nokey" bypassTweak:YES
+            method:@"GET" body:nil ctype:nil timeout:12];
     [self probeURL:@"https://caching.graphql.imdb.com/" label:@"graphql-cache" bypassTweak:YES
             method:@"POST" body:gql ctype:@"application/json" timeout:12];
 
@@ -407,7 +433,9 @@ static NSString *FirstWidgetTitleIn(id node);
         [d setObject:tid forKey:@"tconst"];
         [d setObject:ProbeISO8601() forKey:@"ts"];
         [d setObject:[NSNumber numberWithInteger:st] forKey:@"status"];
-        [d setObject:(info ? @"live" : @"none") forKey:@"source"];
+        // The real provenance, not "we have data": cache/disk vs live is the
+        // difference this probe exists to show.
+        [d setObject:(info ? TitleInfoSource() : @"none") forKey:@"source"];
         if (info) {
             [d setObject:[info objectForKey:@"title"] forKey:@"title"];
             if ([info objectForKey:@"year"]) [d setObject:[info objectForKey:@"year"] forKey:@"year"];
@@ -578,12 +606,125 @@ static NSMutableDictionary *gTitleInfo = nil;
 static NSLock *gTitleInfoLock = nil;
 static NSRecursiveLock *gTitleFetchLock = nil;
 
+// The cache lives in the app's own container so it survives a relaunch: the
+// first fetch after a cold start is exactly where a title tap used to time out
+// and fall through to the archived film.
+static NSString *TitleCachePath(void) {
+    const char *home = getenv("HOME");
+    if (!home) return nil;
+    return [NSString stringWithFormat:@"%s/Library/Caches/imdb-titleinfo.plist", home];
+}
+
+static void LoadTitleCacheFromDisk(void) {
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"titlecache" forKey:@"event"];
+    [d setObject:@"load" forKey:@"op"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+
+    NSString *path = TitleCachePath();
+    [d setObject:(path ? path : @"(no home)") forKey:@"path"];
+    if (!path) { ProbeEmit(d); return; }
+
+    NSData *raw = [NSData dataWithContentsOfFile:path];
+    [d setObject:[NSNumber numberWithUnsignedInteger:[raw length]] forKey:@"bytes"];
+    if (![raw length]) {
+        [d setObject:@"missing" forKey:@"reason"];
+        ProbeEmit(d);
+        return;
+    }
+
+    NSError *err = nil;
+    id root = [NSPropertyListSerialization propertyListWithData:raw
+                                                        options:0
+                                                         format:NULL
+                                                          error:&err];
+    if (![root isKindOfClass:[NSDictionary class]]) {
+        [d setObject:(err ? [err description] : @"not a dictionary") forKey:@"reason"];
+        ProbeEmit(d);
+        return;
+    }
+
+    NSUInteger loaded = 0;
+    [gTitleInfoLock lock];
+    for (id key in (NSDictionary *)root) {
+        id v = [(NSDictionary *)root objectForKey:key];
+        if ([key isKindOfClass:[NSString class]] && [v isKindOfClass:[NSDictionary class]]) {
+            [gTitleInfo setObject:v forKey:key];
+            loaded++;
+        }
+    }
+    [gTitleInfoLock unlock];
+
+    [d setObject:[NSNumber numberWithUnsignedInteger:loaded] forKey:@"loaded"];
+    ProbeEmit(d);
+}
+
+// A failed write must never cost a page, so every failure here is silent.
+// Writes are rate-limited: search-as-you-type would otherwise rewrite the whole
+// plist on every keystroke.
+static NSTimeInterval gTitleCacheSavedAt = 0;
+
+static void SaveTitleCacheToDisk(BOOL force) {
+    NSString *path = TitleCachePath();
+    if (!path) return;
+    NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+    if (!force && gTitleCacheSavedAt > 0 && (now - gTitleCacheSavedAt) < 10.0) return;
+
+    [gTitleInfoLock lock];
+    if ([gTitleInfo count] > 300) {
+        // Keep it small: the newest entries matter, and this is a shortcut for
+        // titles that are about to be opened, not a library.
+        NSArray *keys = [gTitleInfo allKeys];
+        for (NSUInteger i = 0; i + 200 < [keys count]; i++) {
+            [gTitleInfo removeObjectForKey:[keys objectAtIndex:i]];
+        }
+    }
+    NSDictionary *snapshot = [NSDictionary dictionaryWithDictionary:gTitleInfo];
+    [gTitleInfoLock unlock];
+    if (![snapshot count]) return;
+
+    NSData *data = [NSPropertyListSerialization dataFromPropertyList:snapshot
+                                                             format:NSPropertyListBinaryFormat_v1_0
+                                                   errorDescription:NULL];
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"titlecache" forKey:@"event"];
+    [d setObject:@"save" forKey:@"op"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    [d setObject:[NSNumber numberWithUnsignedInteger:[snapshot count]] forKey:@"entries"];
+    [d setObject:[NSNumber numberWithUnsignedInteger:[data length]] forKey:@"bytes"];
+    if (!data) {
+        [d setObject:@"plist encode failed" forKey:@"reason"];
+        ProbeEmit(d);
+        return;
+    }
+    [[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:NULL];
+    BOOL ok = [data writeToFile:path atomically:YES];
+    if (ok) gTitleCacheSavedAt = now;
+    if (!ok) [d setObject:@"write failed" forKey:@"reason"];
+    ProbeEmit(d);
+}
+
+// A title route with nothing live must still answer for the page that is open.
+// `tconst` is all that is certainly known; every other field stays missing.
+static NSDictionary *BlankTitleInfo(NSString *tconst) {
+    return [NSDictionary dictionaryWithObject:(tconst ? tconst : @"") forKey:@"tconst"];
+}
+
 static void TitleInfoInit(void) {
     if (gTitleInfo) return;
     gTitleInfo = [[NSMutableDictionary alloc] init];
     gTitleInfoLock = [[NSLock alloc] init];
     gTitleFetchLock = [[NSRecursiveLock alloc] init];
+    LoadTitleCacheFromDisk();
 }
+
+// The last title route answered, but only while it is still the page being
+// opened. A stale one would attach another film's cast to this header.
+static NSString *LastTitleTconstIfFresh(void);
+
 
 static NSString *SuggestionString(id v) {
     if ([v isKindOfClass:[NSString class]]) return v;
@@ -726,10 +867,12 @@ static NSMutableArray *PeopleFromStars(NSArray *stars) {
 // kept. `has` gates whole widgets, so it is emptied with them.
 static void ApplyTitleInfoToTitleData(NSMutableDictionary *d, NSDictionary *info) {
     if (!d || !info) return;
-    [d setObject:[info objectForKey:@"tconst"] forKey:@"tconst"];
-    if ([info objectForKey:@"title"]) [d setObject:[info objectForKey:@"title"] forKey:@"title"];
-    if ([info objectForKey:@"year"]) [d setObject:[info objectForKey:@"year"] forKey:@"year"];
-    if ([info objectForKey:@"type"]) [d setObject:[info objectForKey:@"type"] forKey:@"type"];
+    // Written unconditionally: when the page is answered for its tconst alone,
+    // these must be empty rather than keep the fixture's film.
+    [d setObject:([info objectForKey:@"tconst"] ? [info objectForKey:@"tconst"] : @"") forKey:@"tconst"];
+    [d setObject:([info objectForKey:@"title"] ? [info objectForKey:@"title"] : @"") forKey:@"title"];
+    [d setObject:([info objectForKey:@"year"] ? [info objectForKey:@"year"] : @"") forKey:@"year"];
+    [d setObject:([info objectForKey:@"type"] ? [info objectForKey:@"type"] : @"") forKey:@"type"];
 
     NSMutableDictionary *img = PosterImageFromInfo(info);
     if (img) {
@@ -838,6 +981,7 @@ static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
 // with the header. It is usually sent with ?tconst=; when it is not, the last
 // title route this process answered is the page being opened.
 static NSString *gLastTitleTconst = nil;
+static NSTimeInterval gLastTitleAt = 0;
 
 static void SetLastTitleTconst(NSString *tconst) {
     if (![tconst length]) return;
@@ -845,13 +989,18 @@ static void SetLastTitleTconst(NSString *tconst) {
     [gTitleInfoLock lock];
     [gLastTitleTconst release];
     gLastTitleTconst = [tconst copy];
+    gLastTitleAt = [NSDate timeIntervalSinceReferenceDate];
     [gTitleInfoLock unlock];
 }
 
-static NSString *LastTitleTconst(void) {
+// 5 s: long enough for the three routes of one page to arrive, short enough
+// that a stale id can never reach a different page's full cast.
+static NSString *LastTitleTconstIfFresh(void) {
     TitleInfoInit();
     [gTitleInfoLock lock];
-    NSString *t = [gLastTitleTconst retain];
+    BOOL fresh = (gLastTitleTconst &&
+                  ([NSDate timeIntervalSinceReferenceDate] - gLastTitleAt) < 5.0);
+    NSString *t = fresh ? [gLastTitleTconst retain] : nil;
     [gTitleInfoLock unlock];
     return [t autorelease];
 }
@@ -1124,6 +1273,18 @@ static NSData *ServeRoute(NSURLRequest *request, NSDictionary *titleInfo,
         return JSONErrorBody(@"IMDb revival: route not built yet");
     }
 
+    // A title route never serves the archived film. If nothing live is known it
+    // answers for this tconst with every other field missing: another film's
+    // name, cast and plot under the right title is the worst possible outcome.
+    if (!titleInfo &&
+        ([name isEqualToString:@"md-2012.json"] ||
+         [name isEqualToString:@"title-auxiliary.json"] ||
+         [name isEqualToString:@"fullcredits.json"])) {
+        NSString *tid = TconstForRequest(request);
+        if (!tid) tid = LastTitleTconstIfFresh();
+        titleInfo = BlankTitleInfo(tid);
+    }
+
     NSString *file = [kRoutesDir stringByAppendingPathComponent:name];
     NSData *raw = [NSData dataWithContentsOfFile:file];
     if (!raw) {
@@ -1298,24 +1459,58 @@ static NSURL *SuggestionURLForQuery(NSString *query) {
                                 prefix, escaped]];
 }
 
-// nil means "nothing live": the fixture answers and the page still renders —
-// with its own tconst but the archived film's text, which is the old behaviour.
+// Where the answer came from, for the log: "disk" on a cold start is the
+// difference between a cache that persisted and one that never did.
+static NSString *gTitleInfoSource = nil;
+
+static void SetTitleInfoSource(NSString *s) {
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    [gTitleInfoSource release];
+    gTitleInfoSource = [s copy];
+    [gTitleInfoLock unlock];
+}
+
+static NSString *TitleInfoSource(void) {
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    NSString *s = [gTitleInfoSource retain];
+    [gTitleInfoLock unlock];
+    return [s autorelease];
+}
+
+// nil means "nothing live": the caller answers for the tconst alone and never
+// serves the archived film's content in its place.
 static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSString **errOut) {
     if (![tconst length]) return nil;
     NSDictionary *hit = CachedTitleInfo(tconst);
-    if (hit) return hit;
+    if (hit) {
+        SetTitleInfoSource(@"cache");
+        return hit;
+    }
 
     TitleInfoInit();
     // maindetails and title-auxiliary are asked for in parallel for the same
     // page; serialise the miss so only one of them goes to the network.
     [gTitleFetchLock lock];
     hit = CachedTitleInfo(tconst);
-    if (!hit) {
+    if (hit) {
+        SetTitleInfoSource(@"cache");
+    } else {
         NSData *body = FetchHTTPS(SuggestionURLForQuery(tconst), 8.0, statusOut, NULL, errOut);
+        if (!body) {
+            // One retry. The first request after launch is where the -1001 race
+            // lives, and a real tap must not pay for it with the fixture.
+            usleep(1000 * 1000);
+            body = FetchHTTPS(SuggestionURLForQuery(tconst), 8.0, statusOut, NULL, errOut);
+        }
         if (body) {
             CacheSuggestionBody(body);
             hit = CachedTitleInfo(tconst);
-            if (!hit && errOut) {
+            if (hit) {
+                SetTitleInfoSource(@"live");
+                SaveTitleCacheToDisk(YES);
+            } else if (errOut) {
                 // The body head is the difference between "the API does not know
                 // this id" and "we could not read the answer".
                 NSUInteger n = [body length] < 120 ? [body length] : 120;
@@ -1429,10 +1624,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
                      nil]);
 
     if (!ctype) ctype = @"application/json";
-    NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
-                             ctype, @"Content-Type",
-                             [NSString stringWithFormat:@"%lu", (unsigned long)[body length]], @"Content-Length",
-                             nil];
+    NSDictionary *headers = ResponseHeaders(ctype, [body length]);
 
     NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
                                                          statusCode:status
@@ -1505,10 +1697,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
         NSInteger outStatus = ok ? 200 : 404;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!_cancelled) {
-                NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
-                                         outCtype, @"Content-Type",
-                                         [NSString stringWithFormat:@"%lu", (unsigned long)[outBody length]], @"Content-Length",
-                                         nil];
+                NSDictionary *headers = ResponseHeaders(outCtype, [outBody length]);
                 NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
                                                                     statusCode:outStatus
                                                                    HTTPVersion:@"HTTP/1.1"
@@ -1541,7 +1730,12 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     NSData *body = FetchLiveSuggests(live, &status, &err);
     // Every search result the app shows is kept by tconst, so opening one of
     // them needs no further request.
-    if (body) CacheSuggestionBody(body);
+    if (body) {
+        CacheSuggestionBody(body);
+        // Tapping one of these results must not depend on the network, and the
+        // entries should still be there after a relaunch.
+        SaveTitleCacheToDisk(NO);
+    }
     NSString *source = @"suggests-live";
     NSString *ctype = @"application/javascript";
 
@@ -1566,10 +1760,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     ProbeLogRequest(request, @"serve", extra);
 
     if (!_cancelled) {
-        NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
-                                 ctype, @"Content-Type",
-                                 [NSString stringWithFormat:@"%lu", (unsigned long)[body length]], @"Content-Length",
-                                 nil];
+        NSDictionary *headers = ResponseHeaders(ctype, [body length]);
         NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
                                                              statusCode:status
                                                             HTTPVersion:@"HTTP/1.1"
@@ -1595,13 +1786,15 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     // fullcredits is often sent without the id; the page being opened is the
     // one the previous title route answered.
     BOOL fromRequest = ([tconst length] > 0);
-    if (!tconst) tconst = LastTitleTconst();
+    if (!tconst) tconst = LastTitleTconstIfFresh();
 
     NSInteger liveStatus = 0;
     NSString *liveErr = nil;
     NSDictionary *info = tconst ? FetchTitleInfo(tconst, &liveStatus, &liveErr) : nil;
     if (tconst) SetLastTitleTconst(tconst);
-    (void)fromRequest;
+    // An empty string here means the page is answered for its tconst alone —
+    // never for the archived film.
+    NSString *source = info ? TitleInfoSource() : @"blank";
 
     NSInteger status = 200;
     NSString *route = nil;
@@ -1613,7 +1806,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     [extra setObject:(route ? route : @"(none)") forKey:@"route"];
     [extra setObject:[NSNumber numberWithInteger:status] forKey:@"served_status"];
     [extra setObject:[NSNumber numberWithUnsignedInteger:[body length]] forKey:@"served_bytes"];
-    [extra setObject:(info ? @"live" : @"fixture") forKey:@"title_source"];
+    [extra setObject:(source ? source : @"blank") forKey:@"title_source"];
     [extra setObject:(fromRequest ? @"request" : (tconst ? @"last" : @"none")) forKey:@"tconst_source"];
     if (tconst) [extra setObject:tconst forKey:@"tconst"];
     if (info) {
@@ -1633,10 +1826,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
         NSInteger outStatus = status;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!_cancelled) {
-                NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
-                                         outCtype, @"Content-Type",
-                                         [NSString stringWithFormat:@"%lu", (unsigned long)[outBody length]], @"Content-Length",
-                                         nil];
+                NSDictionary *headers = ResponseHeaders(outCtype, [outBody length]);
                 NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
                                                                     statusCode:outStatus
                                                                    HTTPVersion:@"HTTP/1.1"
@@ -1665,7 +1855,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"3.9-fullcredits" forKey:@"build"];
+    [d setObject:@"4.1-nofixturecache" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")

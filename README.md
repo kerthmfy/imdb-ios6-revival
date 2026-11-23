@@ -248,6 +248,37 @@ Measured on the device in one launch (`3.8-titleinfo`, four ids):
 | tt0111161 | live | The Shawshank Redemption / 1994 | Tim Robbins, Morgan Freeman | 923 B | 14,809 B, hero+layout+data = The Shawshank Redemption | 2,217 B, 1 group = the 2 names |
 | tt9999999 | fixture | Fight Club / 1999 | Brad Pitt, Edward Norton… | 8,888 B | 32,618 B, unchanged | 20,784 B, unchanged (3 groups, 4 cast) |
 
+### Never another film, and a cache that survives a relaunch (build `4.1-nofixturecache`)
+
+The probe could never have caught this: it builds responses itself, so it always saw live data. A
+real tap was the first true test, and it still showed Fight Club. Three causes were ruled out or
+fixed in one pass:
+
+1. **The fixture is no longer a fallback for a title route.** If nothing live is known for the
+   `tconst`, the route answers for that id alone: identity fields empty, no cast, `has` empty. The
+   archived film's name, plot and cast can no longer appear under another title. Measured with an id
+   the API does not know (`tt9999999`): `maindetails` 491 B with `title = ""`, `title-auxiliary`
+   11,324 B with no hero title and no cast, `fullcredits` 177 B — previously 8,888 / 32,618 / 20,784 B
+   of Fight Club.
+2. **Responses can no longer be cached by the client.** Every answer carries
+   `Cache-Control: no-store, no-cache, must-revalidate`, `Pragma: no-cache` and `Expires: 0`. A cached
+   body is how the same URL kept showing an old title after the data behind it changed.
+3. **The title cache is filled by search and written to disk.** `Library/Caches/imdb-titleinfo.plist`
+   in the app container held 24 entries (4,683 B) after one session. On the next cold start
+   `titlecache load` reported `loaded = 24` and the three known ids produced **no suggestion request
+   at all** — only the unknown id went to the network. A failed lookup is retried once after a second
+   first, because the first request after launch is where `-1001` lives.
+
+`/title/fullcredits` also only borrows the "last title route" `tconst` while it is under 5 s old;
+otherwise it answers for the header alone rather than attaching a stranger's cast.
+
+**OMDb and TMDB, measured.** Both hosts were probed from the device with tlsfix. Both returned
+`-1012`, which is *not* a handshake failure: from the Mac each answers `HTTP 401` with a JSON body
+on a valid TLS connection. `-1012` is an authentication challenge the old stack cancels when no
+credential exists. The probe now labels it `reachable-auth` instead of `tls-wall`. Wiring either
+service up needs a key; nothing is implemented until one exists, because the happy path would be
+unverifiable.
+
 ## Two device-specific facts that shape everything here
 
 **1. armv7 dylibs from a modern toolchain must be built `-marm`.** Such a dylib is compiled
