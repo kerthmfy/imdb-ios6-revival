@@ -38,3 +38,8 @@ shim/certs/
 
 # on-device probe logs pulled into the repo by hand
 logs/
+
+# API keys live on the device only (never commit them)
+keys.plist
+**/keys.plist
+*.key

@@ -248,6 +248,30 @@ Measured on the device in one launch (`3.8-titleinfo`, four ids):
 | tt0111161 | live | The Shawshank Redemption / 1994 | Tim Robbins, Morgan Freeman | 923 B | 14,809 B, hero+layout+data = The Shawshank Redemption | 2,217 B, 1 group = the 2 names |
 | tt9999999 | fixture | Fight Club / 1999 | Brad Pitt, Edward Norton… | 8,888 B | 32,618 B, unchanged | 20,784 B, unchanged (3 groups, 4 cast) |
 
+### OMDb and TMDB fill the page (build `4.2-omdb`)
+
+The suggestion endpoint only knows name, year, two billed names and a poster. Two third-party APIs
+report by IMDb id and are reachable from the device (both answer `401` JSON without a key, which the
+old stack reports as `-1012` — an auth challenge, not a TLS failure):
+
+| Source | Fills | Where it goes |
+|---|---|---|
+| OMDb `?i=<tconst>&plot=short` | plot, rating, votes, genres, runtime, certificate, release date, director, writers, actors, poster | `maindetails` `data` and the `oplot`/`plotd`/`arate`/`gnrs`/`runt`/`rdat`/`drct`/`wrt`/`hero` widgets |
+| TMDB `find` → `/movie/<id>/credits` | full cast with character names and headshots | the `Cast` group of `fullcredits`, plus a `Directed by` group from OMDb |
+
+Measured on the device: The Matrix 8.7 / 2,284,373 votes / 136 min / Action,Sci-Fi / 105-character
+plot, `maindetails` 914 → **1,540 B**; TMDB returned **37** credits for the same id (Keanu Reeves as
+"Neo", headshot URL included), fetched lazily on the full-credits route only.
+
+**Keys are user-supplied and never committed.** The tweak reads `/Library/IMDbRevival/keys.plist`
+(`OMDbAPIKey`, `TMDBAPIKey`) or the `com.imdbrevival.settings` preference domain — the place a
+settings pane would write — so anybody who installs this can bring their own. One caveat found the
+hard way: the file must be readable by the app's user (`644`). At `600 root` the app silently gets
+nothing and the page falls back to what the suggestion API knows.
+
+**The disk cache expires.** Each entry carries `fetched`; anything older than **30 days** is dropped
+and refetched, so a wrong answer cannot stick for the life of the install.
+
 ### Never another film, and a cache that survives a relaunch (build `4.1-nofixturecache`)
 
 The probe could never have caught this: it builds responses itself, so it always saw live data. A

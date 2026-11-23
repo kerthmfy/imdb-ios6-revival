@@ -191,7 +191,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"4.1-nofixturecache" forKey:@"build"];
+    [d setObject:@"4.2-omdb" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -251,6 +251,7 @@ static NSString *LoadTLSFix(void) {
 // One synchronous fetch, logged as a `livetest` line. Runs on a background
 // thread so a dead host cannot stall the launch.
 static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSString **errOut);
+static NSArray *FetchTmdbCast(NSString *tconst, NSString **errOut);
 static NSString *TitleInfoSource(void);
 static NSData *ServeRoute(NSURLRequest *request, NSDictionary *titleInfo,
                           NSInteger *statusOut, NSString **routeOut, NSString **ctypeOut);
@@ -437,10 +438,30 @@ static NSString *FirstWidgetTitleIn(id node);
         // difference this probe exists to show.
         [d setObject:(info ? TitleInfoSource() : @"none") forKey:@"source"];
         if (info) {
-            [d setObject:[info objectForKey:@"title"] forKey:@"title"];
+            // Every one of these is optional now: an id with no entry has only a
+            // tconst, and setObject:nil raises rather than logging nothing.
+            if ([info objectForKey:@"title"]) [d setObject:[info objectForKey:@"title"] forKey:@"title"];
             if ([info objectForKey:@"year"]) [d setObject:[info objectForKey:@"year"] forKey:@"year"];
-            [d setObject:[[info objectForKey:@"stars"] componentsJoinedByString:@" | "] forKey:@"stars"];
+            id starList = [info objectForKey:@"stars"];
+            if ([starList isKindOfClass:[NSArray class]] && [starList count]) {
+                [d setObject:[starList componentsJoinedByString:@" | "] forKey:@"stars"];
+            }
             if ([info objectForKey:@"poster"]) [d setObject:[info objectForKey:@"poster"] forKey:@"poster"];
+            // What OMDb added, so the log shows it without dumping the text.
+            id plot = [info objectForKey:@"plot"];
+            if ([plot isKindOfClass:[NSString class]]) {
+                [d setObject:[NSNumber numberWithUnsignedInteger:[plot length]] forKey:@"plot_len"];
+            }
+            for (NSString *fk in [NSArray arrayWithObjects:@"rating", @"votes", @"runtime", nil]) {
+                if ([info objectForKey:fk]) [d setObject:[info objectForKey:fk] forKey:fk];
+            }
+            id genres = [info objectForKey:@"genres"];
+            if ([genres isKindOfClass:[NSArray class]]) {
+                [d setObject:[genres componentsJoinedByString:@","] forKey:@"genres"];
+            }
+            if ([info objectForKey:@"omdbError"]) {
+                [d setObject:[info objectForKey:@"omdbError"] forKey:@"omdb_error"];
+            }
         } else if (e) {
             [d setObject:e forKey:@"error"];
         }
@@ -578,6 +599,26 @@ static NSString *FirstWidgetTitleIn(id node);
             }
         }
         ProbeEmit(f);
+    }
+
+    // TMDB on its own: two requests (find, credits), logged separately from the
+    // title cache so a failure says which hop broke.
+    {
+        NSString *tmdbErr = nil;
+        NSArray *tmdbCast = FetchTmdbCast(@"tt0133093", &tmdbErr);
+        NSMutableDictionary *t = [NSMutableDictionary dictionary];
+        [t setObject:@"tmdbprobe" forKey:@"event"];
+        [t setObject:[NSNumber numberWithUnsignedInteger:[tmdbCast count]] forKey:@"cast"];
+        [t setObject:ProbeISO8601() forKey:@"ts"];
+        if ([tmdbCast count]) {
+            NSDictionary *first = [tmdbCast objectAtIndex:0];
+            [t setObject:[first objectForKey:@"name"] forKey:@"first"];
+            if ([first objectForKey:@"character"]) [t setObject:[first objectForKey:@"character"] forKey:@"first_char"];
+            if ([first objectForKey:@"image"]) [t setObject:[first objectForKey:@"image"] forKey:@"first_image"];
+        } else if (tmdbErr) {
+            [t setObject:tmdbErr forKey:@"error"];
+        }
+        ProbeEmit(t);
     }
 
     [pool release];
@@ -827,12 +868,37 @@ static void CacheSuggestionBody(NSData *body) {
     [gTitleInfoLock unlock];
 }
 
+// 30 days. Long enough that a normal viewer never pays twice, short enough that
+// a bad or outdated answer cannot stick for the life of the install.
+static const long long kTitleInfoTTL = 30 * 24 * 3600;
+
 static NSDictionary *CachedTitleInfo(NSString *tconst) {
     if (![tconst length]) return nil;
     TitleInfoInit();
+
+    NSDictionary *hit = nil;
+    BOOL expired = NO;
     [gTitleInfoLock lock];
-    NSDictionary *hit = [[gTitleInfo objectForKey:tconst] retain];
+    NSDictionary *raw = [[gTitleInfo objectForKey:tconst] retain];
+    if (raw) {
+        id stamp = [raw objectForKey:@"fetched"];
+        if ([stamp respondsToSelector:@selector(longLongValue)] &&
+            (long long)time(NULL) - [stamp longLongValue] > kTitleInfoTTL) {
+            expired = YES;
+            [gTitleInfo removeObjectForKey:tconst];
+        } else {
+            hit = [raw retain];
+        }
+    }
     [gTitleInfoLock unlock];
+
+    if (expired) {
+        ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+                   @"titlecache", @"event", @"expire", @"op",
+                   tconst, @"tconst", ProbeISO8601(), @"ts", nil]);
+        SaveTitleCacheToDisk(YES);
+    }
+    if (raw) [raw release];
     return [hit autorelease];
 }
 
@@ -902,6 +968,54 @@ static void ApplyTitleInfoToTitleData(NSMutableDictionary *d, NSDictionary *info
                          @"metascore", nil]) {
         [d removeObjectForKey:k];
     }
+
+    // --- what OMDb did confirm -------------------------------------------------
+    NSString *plot = [info objectForKey:@"plot"];
+    if ([plot isKindOfClass:[NSString class]] && [plot length]) {
+        [d setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                      plot, @"outline", @"", @"more", nil] forKey:@"plot"];
+        [d setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                      plot, @"outline", [NSNumber numberWithInt:0], @"total_summaries", nil]
+              forKey:@"best_plot"];
+    }
+    if ([info objectForKey:@"rating"]) [d setObject:[info objectForKey:@"rating"] forKey:@"rating"];
+    if ([info objectForKey:@"votes"]) [d setObject:[info objectForKey:@"votes"] forKey:@"num_votes"];
+
+    NSArray *genres = [info objectForKey:@"genres"];
+    if ([genres isKindOfClass:[NSArray class]] && [genres count]) {
+        NSMutableArray *g = [NSMutableArray array];
+        for (id s in genres) {
+            if ([s isKindOfClass:[NSString class]]) {
+                [g addObject:[NSDictionary dictionaryWithObject:s forKey:@"str"]];
+            }
+        }
+        if ([g count]) [d setObject:g forKey:@"genres"];
+    }
+
+    if ([info objectForKey:@"runtime"]) {
+        [d setObject:[NSDictionary dictionaryWithObject:[info objectForKey:@"runtime"]
+                                                 forKey:@"time"]
+              forKey:@"runtime"];
+    }
+    NSString *cert = [info objectForKey:@"certificate"];
+    if ([cert isKindOfClass:[NSString class]] && [cert length]) {
+        [d setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                      cert, @"certificate", @"", @"attr", nil] forKey:@"certificate"];
+    }
+    NSString *released = [info objectForKey:@"released"];
+    if ([released isKindOfClass:[NSString class]] && [released length]) {
+        [d setObject:[NSDictionary dictionaryWithObject:released forKey:@"normal"]
+              forKey:@"release_date"];
+    }
+
+    NSArray *dirs = [info objectForKey:@"directors"];
+    if ([dirs isKindOfClass:[NSArray class]] && [dirs count]) {
+        [d setObject:PeopleFromStars(dirs) forKey:@"directors_summary"];
+    }
+    NSArray *writers = [info objectForKey:@"writers"];
+    if ([writers isKindOfClass:[NSArray class]] && [writers count]) {
+        [d setObject:PeopleFromStars(writers) forKey:@"writers_summary"];
+    }
 }
 
 // The same values in the shape the config layout reads: one block per widget
@@ -965,12 +1079,61 @@ static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
                forKey:@"photos"];
     [widgets setObject:photos forKey:@"phtos"];
 
-    NSDictionary *emptyPlot = [NSDictionary dictionaryWithObjectsAndKeys:
-                               @"", @"plot", [NSNumber numberWithBool:NO], @"has_more", nil];
-    [widgets setObject:emptyPlot forKey:@"oplot"];
-    [widgets setObject:emptyPlot forKey:@"plotd"];
-    [widgets setObject:[NSDictionary dictionaryWithObject:[NSArray array] forKey:@"genres"]
+    // Plot and genres come from OMDb; an absent value stays empty rather than
+    // borrowing the archived film's.
+    NSString *plot = [info objectForKey:@"plot"];
+    NSDictionary *plotWidget = [NSDictionary dictionaryWithObjectsAndKeys:
+                                (([plot isKindOfClass:[NSString class]]) ? plot : @""), @"plot",
+                                [NSNumber numberWithBool:NO], @"has_more", nil];
+    [widgets setObject:plotWidget forKey:@"oplot"];
+    [widgets setObject:plotWidget forKey:@"plotd"];
+
+    NSMutableArray *genreDicts = [NSMutableArray array];
+    NSArray *genres = [info objectForKey:@"genres"];
+    if ([genres isKindOfClass:[NSArray class]]) {
+        for (id g in genres) {
+            if ([g isKindOfClass:[NSString class]]) {
+                [genreDicts addObject:[NSDictionary dictionaryWithObject:g forKey:@"str"]];
+            }
+        }
+    }
+    [widgets setObject:[NSDictionary dictionaryWithObject:genreDicts forKey:@"genres"]
                 forKey:@"gnrs"];
+    [hero setObject:genreDicts forKey:@"genres"];
+    for (NSString *hk in [NSArray arrayWithObjects:@"certificate", @"rating", @"votes", nil]) {
+        id hv = [info objectForKey:hk];
+        if (!hv) continue;
+        [hero setObject:hv forKey:([hk isEqualToString:@"votes"] ? @"num_votes" : hk)];
+    }
+
+    NSMutableDictionary *arate = [NSMutableDictionary dictionary];
+    if ([info objectForKey:@"rating"]) [arate setObject:[info objectForKey:@"rating"] forKey:@"rating"];
+    if ([info objectForKey:@"votes"]) [arate setObject:[info objectForKey:@"votes"] forKey:@"num_votes"];
+    [widgets setObject:arate forKey:@"arate"];
+
+    NSArray *dirs = [info objectForKey:@"directors"];
+    if ([dirs isKindOfClass:[NSArray class]] && [dirs count]) {
+        [widgets setObject:[NSDictionary dictionaryWithObject:PeopleFromStars(dirs) forKey:@"people"]
+                    forKey:@"drct"];
+    }
+    NSArray *writers = [info objectForKey:@"writers"];
+    if ([writers isKindOfClass:[NSArray class]] && [writers count]) {
+        [widgets setObject:[NSDictionary dictionaryWithObject:PeopleFromStars(writers) forKey:@"people"]
+                    forKey:@"wrt"];
+    }
+    if ([info objectForKey:@"runtime"]) {
+        [widgets setObject:[NSDictionary dictionaryWithObject:[info objectForKey:@"runtime"]
+                                                       forKey:@"time"]
+                    forKey:@"runt"];
+    }
+    NSString *released = [info objectForKey:@"released"];
+    if ([released isKindOfClass:[NSString class]] && [released length]) {
+        [widgets setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                            [NSDictionary dictionaryWithObject:released forKey:@"normal"], @"release_date",
+                            released, @"date", nil]
+                    forKey:@"rdat"];
+    }
+
     [widgets setObject:[NSDictionary dictionaryWithObject:[info objectForKey:@"tconst"]
                                                    forKey:@"tconst"]
                 forKey:@"imdbWS"];
@@ -1021,6 +1184,33 @@ static NSDictionary *CreditForName(NSString *name) {
             nil];
 }
 
+// A credit with the character and portrait TMDB knows. `char`/`characters` are
+// what IMCredit reads; `image` is the headshot URL the list will request.
+static NSDictionary *CreditForPerson(NSString *name, NSString *character, NSString *imageURL) {
+    NSMutableDictionary *person = [NSMutableDictionary dictionaryWithObject:(name ? name : @"")
+                                                                    forKey:@"name"];
+    NSDictionary *image = nil;
+    if ([imageURL isKindOfClass:[NSString class]] && [imageURL length]) {
+        image = [NSDictionary dictionaryWithObjectsAndKeys:
+                 imageURL, @"url",
+                 [NSNumber numberWithInt:185], @"width",
+                 [NSNumber numberWithInt:278], @"height", nil];
+        [person setObject:image forKey:@"image"];
+    }
+    NSMutableDictionary *c = [NSMutableDictionary dictionary];
+    [c setObject:person forKey:@"name"];
+    [c setObject:(character ? character : @"") forKey:@"char"];
+    [c setObject:(character ? character : @"") forKey:@"character"];
+    [c setObject:((character && [character length]) ? [NSArray arrayWithObject:character] : [NSArray array])
+          forKey:@"characters"];
+    [c setObject:[NSNumber numberWithBool:(character && [character length])] forKey:@"hasCharacter"];
+    [c setObject:@"" forKey:@"job"];
+    [c setObject:@"" forKey:@"as"];
+    [c setObject:@"" forKey:@"attribution"];
+    if (image) [c setObject:image forKey:@"image"];
+    return c;
+}
+
 // Same envelope and the same repeated payload keys as the fixture, so the app
 // parses this exactly like the archived body: one group, its credits under
 // `credits`/`groups`/`list`, and the cast and groups again at top level.
@@ -1032,8 +1222,20 @@ static NSData *FullCreditsForInfo(NSDictionary *info) {
     if (![stars isKindOfClass:[NSArray class]]) stars = [NSArray array];
 
     NSMutableArray *cast = [NSMutableArray array];
-    for (NSString *n in stars) {
-        if ([n isKindOfClass:[NSString class]]) [cast addObject:CreditForName(n)];
+    NSArray *tmdb = [info objectForKey:@"tmdbCast"];
+    if ([tmdb isKindOfClass:[NSArray class]] && [tmdb count]) {
+        // Real cast with characters and headshots, in billing order.
+        for (id p in tmdb) {
+            if (![p isKindOfClass:[NSDictionary class]]) continue;
+            [cast addObject:CreditForPerson([p objectForKey:@"name"],
+                                            [p objectForKey:@"character"],
+                                            [p objectForKey:@"image"])];
+        }
+    } else {
+        // No TMDB: the billed names only. Nothing invented.
+        for (NSString *n in stars) {
+            if ([n isKindOfClass:[NSString class]]) [cast addObject:CreditForName(n)];
+        }
     }
 
     NSMutableArray *groups = [NSMutableArray array];
@@ -1047,6 +1249,22 @@ static NSData *FullCreditsForInfo(NSDictionary *info) {
                            cast, @"groups",
                            cast, @"list",
                            nil]];
+    }
+
+    // OMDb knows the director for this film, so the section can be real instead
+    // of the archived crew.
+    NSArray *dirs = [info objectForKey:@"directors"];
+    if ([dirs isKindOfClass:[NSArray class]] && [dirs count]) {
+        NSMutableArray *dc = [NSMutableArray array];
+        for (NSString *n in dirs) {
+            if ([n isKindOfClass:[NSString class]]) [dc addObject:CreditForName(n)];
+        }
+        [groups addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                           @"Directed by", @"name",
+                           @"Directed by", @"title",
+                           @"directed by", @"category",
+                           [NSNumber numberWithUnsignedInteger:[dc count]], @"totalCreditsCount",
+                           dc, @"credits", dc, @"groups", dc, @"list", nil]];
     }
 
     NSDictionary *data = [NSDictionary dictionaryWithObjectsAndKeys:
@@ -1459,6 +1677,225 @@ static NSURL *SuggestionURLForQuery(NSString *query) {
                                 prefix, escaped]];
 }
 
+#pragma mark - user-supplied API keys
+
+// Keys are never compiled in and never committed. This is a tweak, so whoever
+// installs it brings their own: put them in /Library/IMDbRevival/keys.plist as
+// { OMDbAPIKey, TMDBAPIKey }, or in the com.imdbrevival.settings preference
+// domain, which is where a settings pane would write them. A missing key simply
+// disables that source; the page degrades to what the suggestion API knows.
+static NSString * const kKeysPath = @"/Library/IMDbRevival/keys.plist";
+static NSMutableDictionary *gKeys = nil;
+
+static NSString *APIKey(NSString *name) {
+    if (!gKeys) {
+        gKeys = [[NSMutableDictionary alloc] init];
+        NSData *raw = [NSData dataWithContentsOfFile:kKeysPath];
+        if ([raw length]) {
+            id root = [NSPropertyListSerialization propertyListWithData:raw
+                                                                 options:0
+                                                                  format:NULL
+                                                                   error:NULL];
+            if ([root isKindOfClass:[NSDictionary class]]) [gKeys addEntriesFromDictionary:root];
+        }
+    }
+    id v = [gKeys objectForKey:name];
+    if (![v isKindOfClass:[NSString class]] || ![v length]) {
+        v = [[NSUserDefaults standardUserDefaults] stringForKey:name];
+    }
+    if (![v isKindOfClass:[NSString class]] || ![v length]) return nil;
+    return v;
+}
+
+#pragma mark - OMDb / TMDB (fills what the suggestion API cannot)
+
+// "Keanu Reeves, Laurence Fishburne" -> two strings. OMDb uses the same shape.
+static NSMutableArray *SplitNames(NSString *s) {
+    NSMutableArray *out = [NSMutableArray array];
+    if (![s isKindOfClass:[NSString class]]) return out;
+    for (NSString *raw in [s componentsSeparatedByString:@","]) {
+        NSString *n = [raw stringByTrimmingCharactersInSet:
+                       [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if ([n length]) [out addObject:n];
+    }
+    return out;
+}
+
+static NSString *NotAvailable(id v) {
+    if (![v isKindOfClass:[NSString class]]) return nil;
+    NSString *s = [v stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (![s length] || [s isEqualToString:@"N/A"]) return nil;
+    return s;
+}
+
+// "139 min" -> 8340 seconds; the 2012 runtime field is seconds.
+static NSNumber *RuntimeSeconds(NSString *s) {
+    if (![s isKindOfClass:[NSString class]]) return nil;
+    NSMutableString *digits = [NSMutableString string];
+    for (NSUInteger i = 0; i < [s length]; i++) {
+        unichar c = [s characterAtIndex:i];
+        if (c >= '0' && c <= '9') [digits appendFormat:@"%C", c];
+        else if ([digits length]) break;
+    }
+    if (![digits length]) return nil;
+    return [NSNumber numberWithInt:[digits intValue] * 60];
+}
+
+// "2,323,146" -> 2323146
+static NSNumber *DigitNumber(NSString *s) {
+    if (![s isKindOfClass:[NSString class]]) return nil;
+    NSMutableString *digits = [NSMutableString string];
+    for (NSUInteger i = 0; i < [s length]; i++) {
+        unichar c = [s characterAtIndex:i];
+        if (c >= '0' && c <= '9') [digits appendFormat:@"%C", c];
+    }
+    if (![digits length]) return nil;
+    return [NSNumber numberWithLongLong:[digits longLongValue]];
+}
+
+// "31 Mar 1999" -> "1999-03-31"; anything else is left out rather than guessed.
+static NSString *ISO8601Date(NSString *s) {
+    if (![s isKindOfClass:[NSString class]] || ![s length]) return nil;
+    NSDateFormatter *f = [[[NSDateFormatter alloc] init] autorelease];
+    [f setDateFormat:@"d MMM yyyy"];
+    [f setLocale:[[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"] autorelease]];
+    NSDate *d = [f dateFromString:s];
+    if (!d) return nil;
+    [f setDateFormat:@"yyyy-MM-dd"];
+    return [f stringFromDate:d];
+}
+
+// OMDb answers by IMDb id alone, so it also rescues an id the suggestion API
+// does not know. Returns nil when there is no key, no network, or no record.
+static NSMutableDictionary *FetchOmdbInfo(NSString *tconst, NSString **errOut) {
+    NSString *key = APIKey(@"OMDbAPIKey");
+    if (!key) {
+        if (errOut) *errOut = @"no OMDb key";
+        return nil;
+    }
+    NSString *u = [NSString stringWithFormat:
+                   @"https://www.omdbapi.com/?i=%@&plot=short&apikey=%@", tconst, key];
+    NSData *body = FetchHTTPS([NSURL URLWithString:u], 8.0, NULL, NULL, errOut);
+    if (!body) return nil;
+
+    id root = [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL];
+    if (![root isKindOfClass:[NSDictionary class]]) {
+        if (errOut) *errOut = @"omdb: not json";
+        return nil;
+    }
+    if (![[root objectForKey:@"Response"] isEqualToString:@"True"]) {
+        if (errOut) *errOut = [NSString stringWithFormat:@"omdb: %@",
+                               [root objectForKey:@"Error"] ? [root objectForKey:@"Error"] : @"not found"];
+        return nil;
+    }
+
+    NSMutableDictionary *info = [NSMutableDictionary dictionaryWithObject:tconst forKey:@"tconst"];
+    NSString *v = nil;
+    if ((v = NotAvailable([root objectForKey:@"Title"]))) [info setObject:v forKey:@"title"];
+    if ((v = NotAvailable([root objectForKey:@"Year"]))) {
+        [info setObject:([v length] > 4 ? [v substringToIndex:4] : v) forKey:@"year"];
+    }
+    if ((v = NotAvailable([root objectForKey:@"Type"]))) [info setObject:v forKey:@"type"];
+    if ((v = NotAvailable([root objectForKey:@"Rated"]))) [info setObject:v forKey:@"certificate"];
+    if ((v = NotAvailable([root objectForKey:@"Plot"]))) [info setObject:v forKey:@"plot"];
+    if ((v = NotAvailable([root objectForKey:@"Poster"]))) [info setObject:v forKey:@"poster"];
+
+    if ((v = NotAvailable([root objectForKey:@"Genre"]))) [info setObject:SplitNames(v) forKey:@"genres"];
+    if ((v = NotAvailable([root objectForKey:@"Director"]))) [info setObject:SplitNames(v) forKey:@"directors"];
+    if ((v = NotAvailable([root objectForKey:@"Writer"]))) [info setObject:SplitNames(v) forKey:@"writers"];
+    if ((v = NotAvailable([root objectForKey:@"Actors"]))) [info setObject:SplitNames(v) forKey:@"stars"];
+    if ((v = NotAvailable([root objectForKey:@"Released"]))) {
+        NSString *iso = ISO8601Date(v);
+        if (iso) [info setObject:iso forKey:@"released"];
+    }
+    if ((v = NotAvailable([root objectForKey:@"Runtime"]))) {
+        NSNumber *secs = RuntimeSeconds(v);
+        if (secs) [info setObject:secs forKey:@"runtime"];
+    }
+    if ((v = NotAvailable([root objectForKey:@"imdbVotes"]))) {
+        NSNumber *n = DigitNumber(v);
+        if (n) [info setObject:n forKey:@"votes"];
+    }
+    if ((v = NotAvailable([root objectForKey:@"imdbRating"]))) {
+        [info setObject:[NSNumber numberWithDouble:[v doubleValue]] forKey:@"rating"];
+    }
+    return info;
+}
+
+// Two requests, only on the full-credits route: find the movie from the IMDb id,
+// then its credits. Returns [{name, character, profile}] or nil.
+static NSArray *FetchTmdbCast(NSString *tconst, NSString **errOut) {
+    NSString *key = APIKey(@"TMDBAPIKey");
+    if (!key) {
+        if (errOut) *errOut = @"no TMDB key";
+        return nil;
+    }
+    NSString *find = [NSString stringWithFormat:
+                      @"https://api.themoviedb.org/3/find/%@?external_source=imdb_id&api_key=%@",
+                      tconst, key];
+    NSData *body = FetchHTTPS([NSURL URLWithString:find], 8.0, NULL, NULL, errOut);
+    if (!body) return nil;
+    id root = [NSJSONSerialization JSONObjectWithData:body options:0 error:NULL];
+    id results = [root isKindOfClass:[NSDictionary class]] ? [root objectForKey:@"movie_results"] : nil;
+    if (![results isKindOfClass:[NSArray class]] || ![results count]) {
+        if (errOut) *errOut = @"tmdb: no movie_result";
+        return nil;
+    }
+    id movieId = [[results objectAtIndex:0] objectForKey:@"id"];
+    if (![movieId respondsToSelector:@selector(stringValue)]) return nil;
+
+    NSString *credits = [NSString stringWithFormat:
+                         @"https://api.themoviedb.org/3/movie/%@/credits?api_key=%@",
+                         [movieId stringValue], key];
+    NSData *cbody = FetchHTTPS([NSURL URLWithString:credits], 8.0, NULL, NULL, errOut);
+    if (!cbody) return nil;
+    id croot = [NSJSONSerialization JSONObjectWithData:cbody options:0 error:NULL];
+    id cast = [croot isKindOfClass:[NSDictionary class]] ? [croot objectForKey:@"cast"] : nil;
+    if (![cast isKindOfClass:[NSArray class]]) {
+        if (errOut) *errOut = @"tmdb: no cast";
+        return nil;
+    }
+
+    NSMutableArray *out = [NSMutableArray array];
+    for (id p in cast) {
+        if (![p isKindOfClass:[NSDictionary class]]) continue;
+        NSString *name = SuggestionString([p objectForKey:@"name"]);
+        if (![name length]) continue;
+        NSString *character = SuggestionString([p objectForKey:@"character"]);
+        NSString *profile = SuggestionString([p objectForKey:@"profile_path"]);
+        NSMutableDictionary *e = [NSMutableDictionary dictionary];
+        [e setObject:name forKey:@"name"];
+        if ([character length]) [e setObject:character forKey:@"character"];
+        // TMDB serves headshots; the app asks for whatever URL the payload
+        // carries, and this one is https like the Amazon posters it already
+        // loads.
+        if ([profile length]) {
+            [e setObject:[NSString stringWithFormat:@"https://image.tmdb.org/t/p/w185%@", profile]
+                  forKey:@"image"];
+        }
+        [out addObject:e];
+    }
+    return out;
+}
+
+// Copies whatever OMDb could confirm over the suggestion answer.
+static void MergeInfo(NSMutableDictionary *into, NSDictionary *from) {
+    if (!into || !from) return;
+    for (NSString *k in [NSArray arrayWithObjects:@"title", @"year", @"type", @"certificate",
+                         @"plot", @"genres", @"directors", @"writers", @"stars", @"released",
+                         @"runtime", @"votes", @"rating", nil]) {
+        id v = [from objectForKey:k];
+        if (!v) continue;
+        // An empty string or array is a missing value, not a better one.
+        if ([v isKindOfClass:[NSString class]] && ![v length]) continue;
+        if ([v isKindOfClass:[NSArray class]] && ![v count]) continue;
+        [into setObject:v forKey:k];
+    }
+    if (![[into objectForKey:@"poster"] length] && [[from objectForKey:@"poster"] length]) {
+        [into setObject:[from objectForKey:@"poster"] forKey:@"poster"];
+    }
+}
+
 // Where the answer came from, for the log: "disk" on a cold start is the
 // difference between a cache that persisted and one that never did.
 static NSString *gTitleInfoSource = nil;
@@ -1504,12 +1941,16 @@ static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSSt
             usleep(1000 * 1000);
             body = FetchHTTPS(SuggestionURLForQuery(tconst), 8.0, statusOut, NULL, errOut);
         }
+        NSString *src = nil;
+        NSMutableDictionary *info = [NSMutableDictionary dictionary];
+        [info setObject:tconst forKey:@"tconst"];
+
         if (body) {
             CacheSuggestionBody(body);
-            hit = CachedTitleInfo(tconst);
-            if (hit) {
-                SetTitleInfoSource(@"live");
-                SaveTitleCacheToDisk(YES);
+            NSDictionary *sugg = CachedTitleInfo(tconst);
+            if (sugg) {
+                [info addEntriesFromDictionary:sugg];
+                src = @"live";
             } else if (errOut) {
                 // The body head is the difference between "the API does not know
                 // this id" and "we could not read the answer".
@@ -1520,6 +1961,33 @@ static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSSt
                            head ? head : @"(non-utf8)"];
             }
         }
+
+        // OMDb answers by id alone, so this is also what rescues an id the
+        // suggestion endpoint has never heard of — a blank page becomes a page.
+        NSString *omdbErr = nil;
+        NSMutableDictionary *omdb = FetchOmdbInfo(tconst, &omdbErr);
+        if (omdb) {
+            MergeInfo(info, omdb);
+            src = [src length] ? @"live+omdb" : @"omdb";
+        } else {
+            // Keep the reason with the entry. A key the app cannot read, and an
+            // id OMDb has nothing for, look identical in the payload otherwise.
+            [info setObject:(omdbErr ? omdbErr : @"no omdb") forKey:@"omdbError"];
+            if (![src length] && errOut) {
+                NSString *have = (*errOut ? *errOut : @"no suggestion entry");
+                *errOut = [NSString stringWithFormat:@"%@ / %@", have, omdbErr ? omdbErr : @"no omdb"];
+            }
+        }
+
+        // Stamped so the disk entry can expire: a wrong answer must not live
+        // forever just because it was written once.
+        [info setObject:[NSNumber numberWithLongLong:(long long)time(NULL)] forKey:@"fetched"];
+        [gTitleInfoLock lock];
+        [gTitleInfo setObject:info forKey:tconst];
+        [gTitleInfoLock unlock];
+        hit = info;
+        SetTitleInfoSource(src ? src : @"none");
+        SaveTitleCacheToDisk(YES);
     }
     [gTitleFetchLock unlock];
     return hit;
@@ -1796,6 +2264,27 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     // never for the archived film.
     NSString *source = info ? TitleInfoSource() : @"blank";
 
+    // Full cast is the only route that wants the real credit list, and TMDB is
+    // the only source for characters and headshots: fetched here, once, and
+    // kept with the rest of the entry so a second open is free.
+    NSString *routeName = RouteNameForRequest(request);
+    if (info && [routeName isEqualToString:@"fullcredits.json"] &&
+        ![[info objectForKey:@"tmdbCast"] isKindOfClass:[NSArray class]]) {
+        NSString *tmdbErr = nil;
+        NSArray *tmdbCast = FetchTmdbCast(tconst, &tmdbErr);
+        if ([tmdbCast count]) {
+            NSMutableDictionary *merged = [[info mutableCopy] autorelease];
+            [merged setObject:tmdbCast forKey:@"tmdbCast"];
+            info = merged;
+            [gTitleInfoLock lock];
+            [gTitleInfo setObject:merged forKey:tconst];
+            [gTitleInfoLock unlock];
+            SaveTitleCacheToDisk(YES);
+        } else if (tmdbErr) {
+            liveErr = tmdbErr;
+        }
+    }
+
     NSInteger status = 200;
     NSString *route = nil;
     NSString *ctype = nil;
@@ -1855,7 +2344,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"4.1-nofixturecache" forKey:@"build"];
+    [d setObject:@"4.2-omdb" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
