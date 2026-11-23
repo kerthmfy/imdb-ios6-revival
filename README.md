@@ -199,6 +199,53 @@ created — the data shape is not the reason. Supplying the data nested per widg
 aliases, changed nothing. The layout the app builds omits that widget; finding the lookup that feeds
 it needs a recording hook, not more guessing.
 
+### Every title gets its own name, year, stars and poster (build `3.8-titleinfo`)
+
+Until this build the title routes answered from `md-2012.json` and only substituted `tconst`, so
+every film rendered Fight Club. The suggestion API is the one live endpoint that answers a bare
+`tconst`, and it is the same host the app's search already uses — measured reachable from this
+device with tlsfix (`200`, 2,146 B):
+
+```
+GET https://v3.sg.media-imdb.com/suggestion/t/tt0133093.json
+{"d":[{"i":{"imageUrl":"https://m.media-amazon.com/…@._V1_.jpg","width":2100,"height":3156},
+       "id":"tt0133093","l":"The Matrix","q":"feature","rank":349,
+       "s":"Keanu Reeves, Laurence Fishburne","y":1999}],"q":"tt0133093","v":1}
+```
+
+So the per-title path needs no relay and no browser session. `FetchTitleInfo` resolves a `tconst`
+from the cache first (every search the app runs is recorded by `id`, so tapping a result costs no
+request), then from the endpoint above; the answer is cached and the miss is serialised, because
+`maindetails` and `title-auxiliary` are asked for in parallel. `ServeRoute` then rewrites the
+fixture's `data`: `title`, `year`, `type`, `image` (the poster), `photos`, `cast_summary` from `s`.
+The auxiliary body gets the same values as a 34-name `widgets` map, and every widget node in
+`sections` gets its `data` replaced to match — the layout carries its own copy, so patching only the
+map is not enough.
+
+**What is emptied on purpose.** The API knows five fields; a fixture's plot, quotes, trivia, reviews,
+directors, genres, rating, votes, certificate, runtime and trailer belong to the film it was captured
+for. They are removed rather than shown under another title's name, and `has` is emptied with them so
+those widgets do not open empty sections. What remains on a per-title page is name, year, type,
+poster and the two billed names.
+
+**The poster is asked for as a thumb.** The API hands out the 2100×3156 original (3,728,582 B, the
+byte count the reach probe logged); `PosterThumbURL` swaps the `_V1_.jpg` tail for `_V1_SX400.jpg`,
+which returns the same image at 61,525 B. The poster *widget* is still never created (§ above), so
+this changes the image the page can load, not whether that widget appears.
+
+**Fallback.** A `tconst` with no live entry (measured: `tt9999999`) logs
+`title_source=fixture` with the API's body head as the reason, and the page renders the archived film
+exactly as before. Nothing throws away a working page to gain live data.
+
+Measured on the device in one launch (`3.8-titleinfo`, four ids):
+
+| tconst | source | name / year | stars | `maindetails` | `title-auxiliary` |
+|---|---|---|---|---|---|
+| tt0133093 | live | The Matrix / 1999 | Keanu Reeves, Laurence Fishburne | 914 B | 14,754 B, hero+layout+data = The Matrix |
+| tt0068646 | live | The Godfather / 1972 | Marlon Brando, Al Pacino | 909 B | 14,745 B, hero+layout+data = The Godfather |
+| tt0111161 | live | The Shawshank Redemption / 1994 | Tim Robbins, Morgan Freeman | 923 B | 14,809 B, hero+layout+data = The Shawshank Redemption |
+| tt9999999 | fixture | Fight Club / 1999 | Brad Pitt, Edward Norton… | 8,888 B | 32,618 B, unchanged |
+
 ## Two device-specific facts that shape everything here
 
 **1. armv7 dylibs from a modern toolchain must be built `-marm`.** Such a dylib is compiled

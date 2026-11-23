@@ -178,7 +178,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"3.7-reach" forKey:@"build"];
+    [d setObject:@"3.8-titleinfo" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -237,6 +237,11 @@ static NSString *LoadTLSFix(void) {
 
 // One synchronous fetch, logged as a `livetest` line. Runs on a background
 // thread so a dead host cannot stall the launch.
+static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSString **errOut);
+static NSData *ServeRoute(NSURLRequest *request, NSDictionary *titleInfo,
+                          NSInteger *statusOut, NSString **routeOut, NSString **ctypeOut);
+static NSString *FirstWidgetTitleIn(id node);
+
 @interface IMDBLiveTest : NSObject
 - (void)run:(id)ignored;
 @end
@@ -387,10 +392,458 @@ static NSString *LoadTLSFix(void) {
             method:@"POST" body:gql ctype:@"application/json" timeout:12 headers:browser];
     [gql release];
 
+    // --- per-title path (3.8) -------------------------------------------------
+    // Resolve a few tconsts exactly the way a title page does, then build the
+    // body the app would receive. Logged as `titleinfo` and `titlebody` so the
+    // payload can be checked without tapping through the UI.
+    NSArray *ids = [NSArray arrayWithObjects:@"tt0133093", @"tt0068646", @"tt0111161",
+                    @"tt9999999", nil];
+    for (NSString *tid in ids) {
+        NSInteger st = 0;
+        NSString *e = nil;
+        NSDictionary *info = FetchTitleInfo(tid, &st, &e);
+        NSMutableDictionary *d = [NSMutableDictionary dictionary];
+        [d setObject:@"titleinfo" forKey:@"event"];
+        [d setObject:tid forKey:@"tconst"];
+        [d setObject:ProbeISO8601() forKey:@"ts"];
+        [d setObject:[NSNumber numberWithInteger:st] forKey:@"status"];
+        [d setObject:(info ? @"live" : @"none") forKey:@"source"];
+        if (info) {
+            [d setObject:[info objectForKey:@"title"] forKey:@"title"];
+            if ([info objectForKey:@"year"]) [d setObject:[info objectForKey:@"year"] forKey:@"year"];
+            [d setObject:[[info objectForKey:@"stars"] componentsJoinedByString:@" | "] forKey:@"stars"];
+            if ([info objectForKey:@"poster"]) [d setObject:[info objectForKey:@"poster"] forKey:@"poster"];
+        } else if (e) {
+            [d setObject:e forKey:@"error"];
+        }
+        ProbeEmit(d);
+
+        // The bytes the page actually gets, parsed back.
+        NSURLRequest *fake = [NSURLRequest requestWithURL:
+                              [NSURL URLWithString:[NSString stringWithFormat:
+                                                    @"http://app.imdb.com/title/%@/maindetails", tid]]];
+        NSInteger bs = 0;
+        NSString *broute = nil;
+        NSString *bctype = nil;
+        NSData *bbody = ServeRoute(fake, info, &bs, &broute, &bctype);
+        NSMutableDictionary *b = [NSMutableDictionary dictionary];
+        [b setObject:@"titlebody" forKey:@"event"];
+        [b setObject:tid forKey:@"tconst"];
+        [b setObject:(broute ? broute : @"(none)") forKey:@"route"];
+        [b setObject:[NSNumber numberWithUnsignedInteger:[bbody length]] forKey:@"bytes"];
+        [b setObject:ProbeISO8601() forKey:@"ts"];
+        id root = [NSJSONSerialization JSONObjectWithData:bbody options:0 error:NULL];
+        id data = [root isKindOfClass:[NSDictionary class]] ? [root objectForKey:@"data"] : nil;
+        if ([data isKindOfClass:[NSDictionary class]]) {
+            if ([data objectForKey:@"title"]) [b setObject:[data objectForKey:@"title"] forKey:@"title"];
+            if ([data objectForKey:@"year"]) [b setObject:[data objectForKey:@"year"] forKey:@"year"];
+            id cast = [data objectForKey:@"cast_summary"];
+            if ([cast isKindOfClass:[NSArray class]]) {
+                [b setObject:[NSNumber numberWithUnsignedInteger:[cast count]] forKey:@"cast"];
+                if ([cast count]) {
+                    id p = [cast objectAtIndex:0];
+                    id nm = [p isKindOfClass:[NSDictionary class]] ? [p objectForKey:@"name"] : nil;
+                    id n = [nm isKindOfClass:[NSDictionary class]] ? [nm objectForKey:@"name"] : nil;
+                    if ([n isKindOfClass:[NSString class]]) [b setObject:n forKey:@"cast0"];
+                }
+            }
+            id img = [data objectForKey:@"image"];
+            if ([img isKindOfClass:[NSDictionary class]]) {
+                id u = [img objectForKey:@"url"];
+                if ([u isKindOfClass:[NSString class]]) [b setObject:u forKey:@"image_url"];
+            }
+            id plot = [data objectForKey:@"plot"];
+            if ([plot isKindOfClass:[NSDictionary class]]) {
+                id outline = [plot objectForKey:@"outline"];
+                [b setObject:[NSNumber numberWithUnsignedInteger:
+                              ([outline isKindOfClass:[NSString class]] ? [outline length] : 0)]
+                      forKey:@"plot_len"];
+            }
+        }
+        ProbeEmit(b);
+
+        // The page itself is driven by the auxiliary layout, so build that body
+        // too: widgets map, layout `data` copies and the top-level `data` block.
+        NSURLRequest *auxReq = [NSURLRequest requestWithURL:
+                                [NSURL URLWithString:[NSString stringWithFormat:
+                                @"http://api.imdbws.com/template/imdb-ios-writable/ipad-title-auxiliary-v5b.jstl/render?tconst=%@", tid]]];
+        NSInteger as = 0;
+        NSString *aroute = nil;
+        NSString *actype = nil;
+        NSData *abody = ServeRoute(auxReq, info, &as, &aroute, &actype);
+        id aroot = abody ? [NSJSONSerialization JSONObjectWithData:abody options:0 error:NULL] : nil;
+        NSMutableDictionary *a = [NSMutableDictionary dictionary];
+        [a setObject:@"titleaux" forKey:@"event"];
+        [a setObject:tid forKey:@"tconst"];
+        [a setObject:(aroute ? aroute : @"(none)") forKey:@"route"];
+        [a setObject:[NSNumber numberWithUnsignedInteger:[abody length]] forKey:@"bytes"];
+        [a setObject:[NSNumber numberWithBool:(aroot != nil)] forKey:@"json_ok"];
+        [a setObject:ProbeISO8601() forKey:@"ts"];
+        if ([aroot isKindOfClass:[NSDictionary class]]) {
+            id widgets = [aroot objectForKey:@"widgets"];
+            if ([widgets isKindOfClass:[NSDictionary class]]) {
+                [a setObject:[NSNumber numberWithUnsignedInteger:[widgets count]] forKey:@"widgets"];
+                id hero = [widgets objectForKey:@"hero"];
+                if ([hero isKindOfClass:[NSDictionary class]]) {
+                    if ([hero objectForKey:@"title"]) [a setObject:[hero objectForKey:@"title"] forKey:@"hero_title"];
+                    if ([hero objectForKey:@"year"]) [a setObject:[hero objectForKey:@"year"] forKey:@"hero_year"];
+                }
+                id pw = [widgets objectForKey:@"pstr"];
+                if ([pw isKindOfClass:[NSDictionary class]]) {
+                    id iu = [pw objectForKey:@"imageURL"];
+                    if ([iu isKindOfClass:[NSString class]]) [a setObject:iu forKey:@"pstr_imageURL"];
+                }
+                id cw = [widgets objectForKey:@"cast"];
+                if ([cw isKindOfClass:[NSDictionary class]]) {
+                    id people = [cw objectForKey:@"people"];
+                    [a setObject:[NSNumber numberWithUnsignedInteger:
+                                  ([people isKindOfClass:[NSArray class]] ? [people count] : 0)]
+                          forKey:@"cast_people"];
+                }
+            }
+            id adata = [aroot objectForKey:@"data"];
+            if ([adata isKindOfClass:[NSDictionary class]] && [adata objectForKey:@"title"]) {
+                [a setObject:[adata objectForKey:@"title"] forKey:@"data_title"];
+            }
+            NSString *layoutTitle = FirstWidgetTitleIn([aroot objectForKey:@"sections"]);
+            if (layoutTitle) [a setObject:layoutTitle forKey:@"layout_title"];
+        }
+        ProbeEmit(a);
+    }
+
     [pool release];
 }
 
 @end
+
+#pragma mark - per-title data (live suggestion)
+
+// The title routes have always answered from md-2012.json, so every film showed
+// Fight Club's name, year, cast and poster with only the tconst corrected. The
+// suggestion API fixes that from the device itself: it is the same host the
+// app's search already talks to, it was measured reachable with tlsfix
+// (3.7-reach: 200/2,146 B), and it accepts a bare tconst as the query —
+//
+//   https://v3.sg.media-imdb.com/suggestion/t/tt0133093.json
+//   {"d":[{"i":{"imageUrl":"https://m.media-amazon.com/...","width":2100,
+//               "height":3156},
+//          "id":"tt0133093","l":"The Matrix","q":"feature","rank":349,
+//          "s":"Keanu Reeves, Laurence Fishburne","y":1999}]}
+//
+// — so a page opened from a chart or a link needs no search text, and a page
+// opened from search costs no second request: every search the app runs passes
+// through this tweak and its entries are kept by tconst.
+static NSMutableDictionary *gTitleInfo = nil;
+static NSLock *gTitleInfoLock = nil;
+static NSRecursiveLock *gTitleFetchLock = nil;
+
+static void TitleInfoInit(void) {
+    if (gTitleInfo) return;
+    gTitleInfo = [[NSMutableDictionary alloc] init];
+    gTitleInfoLock = [[NSLock alloc] init];
+    gTitleFetchLock = [[NSRecursiveLock alloc] init];
+}
+
+static NSString *SuggestionString(id v) {
+    if ([v isKindOfClass:[NSString class]]) return v;
+    if ([v isKindOfClass:[NSNumber class]]) return [v stringValue];
+    return nil;
+}
+
+// The API hands out the original poster (2100x3156, 3.7 MB measured on this
+// device). The 2012 layout wants 336x500, so ask the same object for the
+// `_SX400` variant instead. Any other URL shape is returned untouched.
+static NSString *PosterThumbURL(NSString *url) {
+    if (![url hasSuffix:@"_V1_.jpg"]) return url;
+    return [url stringByReplacingOccurrencesOfString:@"_V1_.jpg"
+                                          withString:@"_V1_SX400.jpg"
+                                             options:NSBackwardsSearch
+                                               range:NSMakeRange(0, [url length])];
+}
+
+// One suggestion entry -> the fields a title page needs.
+static NSMutableDictionary *TitleInfoFromEntry(NSDictionary *e) {
+    if (![e isKindOfClass:[NSDictionary class]]) return nil;
+    NSString *tid = SuggestionString([e objectForKey:@"id"]);
+    NSString *name = SuggestionString([e objectForKey:@"l"]);
+    if (![tid hasPrefix:@"tt"] || ![name length]) return nil;
+
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    [info setObject:tid forKey:@"tconst"];
+    [info setObject:name forKey:@"title"];
+
+    NSString *year = SuggestionString([e objectForKey:@"y"]);
+    if (![year length]) year = SuggestionString([e objectForKey:@"tl"]);
+    if ([year length]) [info setObject:year forKey:@"year"];
+
+    NSString *type = SuggestionString([e objectForKey:@"q"]);
+    if ([type length]) [info setObject:type forKey:@"type"];
+
+    // `s` is the principal cast, comma separated: "Keanu Reeves, Laurence
+    // Fishburne". Two names is what the API returns for most titles.
+    NSMutableArray *stars = [NSMutableArray array];
+    NSString *cast = SuggestionString([e objectForKey:@"s"]);
+    if ([cast length]) {
+        for (NSString *raw in [cast componentsSeparatedByString:@","]) {
+            NSString *n = [raw stringByTrimmingCharactersInSet:
+                           [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if ([n length]) [stars addObject:n];
+        }
+    }
+    [info setObject:stars forKey:@"stars"];
+
+    id img = [e objectForKey:@"i"];
+    if ([img isKindOfClass:[NSDictionary class]]) {
+        NSString *u = SuggestionString([img objectForKey:@"imageUrl"]);
+        if (![u length]) u = SuggestionString([img objectForKey:@"url"]);
+        if ([u length]) {
+            [info setObject:PosterThumbURL(u) forKey:@"poster"];
+            id w = [img objectForKey:@"width"];
+            id h = [img objectForKey:@"height"];
+            if ([w isKindOfClass:[NSNumber class]]) [info setObject:w forKey:@"width"];
+            if ([h isKindOfClass:[NSNumber class]]) [info setObject:h forKey:@"height"];
+        }
+    }
+    return info;
+}
+
+// Keeps the entries of any suggestion answer the app itself receives. Bounded:
+// a search session is a handful of results, and the map is only a shortcut for
+// titles that are about to be opened.
+static void CacheSuggestionBody(NSData *body) {
+    if (![body length]) return;
+    NSData *json = body;
+    // The old sg host answers JSONP: imdb$prefix({...}). Only unwrap when the
+    // body is not already JSON — a suggestion set can legitimately contain a
+    // "(" ("Michael Douglas (I)"), and cutting at the first one corrupts it.
+    NSString *text = [[[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding] autorelease];
+    if (text && ![text hasPrefix:@"{"] && ![text hasPrefix:@"["] &&
+        [text rangeOfString:@"imdb$"].location != NSNotFound) {
+        NSRange open = [text rangeOfString:@"("];
+        NSRange close = [text rangeOfString:@")" options:NSBackwardsSearch];
+        if (open.location != NSNotFound && close.location != NSNotFound &&
+            close.location > open.location) {
+            json = [[text substringWithRange:NSMakeRange(open.location + 1,
+                                                         close.location - open.location - 1)]
+                    dataUsingEncoding:NSUTF8StringEncoding];
+        }
+    }
+
+    id root = [NSJSONSerialization JSONObjectWithData:json options:0 error:NULL];
+    NSArray *entries = nil;
+    if ([root isKindOfClass:[NSDictionary class]]) entries = [root objectForKey:@"d"];
+    else if ([root isKindOfClass:[NSArray class]]) entries = root;
+    if (![entries isKindOfClass:[NSArray class]]) return;
+
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    if ([gTitleInfo count] > 400) [gTitleInfo removeAllObjects];
+    for (id e in entries) {
+        NSMutableDictionary *info = TitleInfoFromEntry(e);
+        if (info) [gTitleInfo setObject:info forKey:[info objectForKey:@"tconst"]];
+    }
+    [gTitleInfoLock unlock];
+}
+
+static NSDictionary *CachedTitleInfo(NSString *tconst) {
+    if (![tconst length]) return nil;
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    NSDictionary *hit = [[gTitleInfo objectForKey:tconst] retain];
+    [gTitleInfoLock unlock];
+    return [hit autorelease];
+}
+
+static NSMutableDictionary *PosterImageFromInfo(NSDictionary *info) {
+    NSString *poster = [info objectForKey:@"poster"];
+    if (![poster length]) return nil;
+    NSMutableDictionary *img = [NSMutableDictionary dictionary];
+    [img setObject:poster forKey:@"url"];
+    id w = [info objectForKey:@"width"];
+    id h = [info objectForKey:@"height"];
+    [img setObject:(w ? w : [NSNumber numberWithInt:336]) forKey:@"width"];
+    [img setObject:(h ? h : [NSNumber numberWithInt:500]) forKey:@"height"];
+    return img;
+}
+
+// The 2012 person shape: { name: { name, image? } }. `nconst` is unknown here
+// and is left out rather than guessed.
+static NSMutableArray *PeopleFromStars(NSArray *stars) {
+    NSMutableArray *out = [NSMutableArray array];
+    for (id n in stars) {
+        if (![n isKindOfClass:[NSString class]]) continue;
+        [out addObject:[NSDictionary dictionaryWithObject:
+                        [NSDictionary dictionaryWithObject:n forKey:@"name"]
+                                                   forKey:@"name"]];
+    }
+    return out;
+}
+
+// The suggestion API knows five things: name, year, type, principal cast and
+// poster. Everything else in the fixture would be Fight Club's plot, quote and
+// reviews under another film's name, so those keys are emptied rather than
+// kept. `has` gates whole widgets, so it is emptied with them.
+static void ApplyTitleInfoToTitleData(NSMutableDictionary *d, NSDictionary *info) {
+    if (!d || !info) return;
+    [d setObject:[info objectForKey:@"tconst"] forKey:@"tconst"];
+    if ([info objectForKey:@"title"]) [d setObject:[info objectForKey:@"title"] forKey:@"title"];
+    if ([info objectForKey:@"year"]) [d setObject:[info objectForKey:@"year"] forKey:@"year"];
+    if ([info objectForKey:@"type"]) [d setObject:[info objectForKey:@"type"] forKey:@"type"];
+
+    NSMutableDictionary *img = PosterImageFromInfo(info);
+    if (img) {
+        [d setObject:img forKey:@"image"];
+        [d setObject:[NSArray arrayWithObject:
+                      [NSDictionary dictionaryWithObject:img forKey:@"image"]]
+              forKey:@"photos"];
+    } else {
+        [d removeObjectForKey:@"image"];
+        [d setObject:[NSArray array] forKey:@"photos"];
+    }
+
+    NSArray *stars = [info objectForKey:@"stars"];
+    [d setObject:PeopleFromStars([stars isKindOfClass:[NSArray class]] ? stars : [NSArray array])
+          forKey:@"cast_summary"];
+
+    for (NSString *k in [NSArray arrayWithObjects:@"directors_summary", @"writers_summary",
+                         @"genres", @"has", nil]) {
+        [d setObject:[NSArray array] forKey:k];
+    }
+    for (NSString *k in [NSArray arrayWithObjects:@"plot", @"best_plot", @"quote", @"trivium",
+                         @"goof", @"news", nil]) {
+        [d setObject:[NSDictionary dictionary] forKey:k];
+    }
+    for (NSString *k in [NSArray arrayWithObjects:@"rating", @"num_votes", @"certificate",
+                         @"release_date", @"runtime", @"tagline", @"user_comment", @"trailer",
+                         @"metascore", nil]) {
+        [d removeObjectForKey:k];
+    }
+}
+
+// The same values in the shape the config layout reads: one block per widget
+// name. Widgets whose content the API cannot confirm stay empty on purpose.
+static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
+    NSArray *names = [NSArray arrayWithObjects:
+                      @"hero", @"titl", @"pstr", @"arate", @"urate", @"meta", @"oplot", @"plotd",
+                      @"drct", @"wrt", @"cast", @"phtos", @"plytlr", @"tAwrd", @"t250", @"pulq",
+                      @"triv", @"quot", @"goof", @"crzy", @"sndt", @"tgln", @"gnrs", @"rdat",
+                      @"lang", @"altt", @"loctn", @"runt", @"altv", @"sims", @"conns", @"imdbWS",
+                      @"crev", @"ocrev", nil];
+    NSMutableDictionary *widgets = [NSMutableDictionary dictionary];
+    for (NSString *n in names) [widgets setObject:[NSDictionary dictionary] forKey:n];
+
+    NSString *title = [info objectForKey:@"title"];
+    NSString *year = [info objectForKey:@"year"];
+    NSString *type = [info objectForKey:@"type"];
+    NSString *poster = [info objectForKey:@"poster"];
+    NSMutableDictionary *img = PosterImageFromInfo(info);
+    NSArray *stars = [info objectForKey:@"stars"];
+    if (![stars isKindOfClass:[NSArray class]]) stars = [NSArray array];
+
+    NSMutableDictionary *hero = [NSMutableDictionary dictionary];
+    if (title) [hero setObject:title forKey:@"title"];
+    if (year) [hero setObject:year forKey:@"year"];
+    if (type) [hero setObject:type forKey:@"type"];
+    [hero setObject:[info objectForKey:@"tconst"] forKey:@"tconst"];
+    [hero setObject:[NSArray array] forKey:@"genres"];
+    if (img) {
+        [hero setObject:img forKey:@"image"];
+        [hero setObject:img forKey:@"poster"];
+        [hero setObject:poster forKey:@"imageURL"];
+    }
+    [widgets setObject:hero forKey:@"hero"];
+
+    NSMutableDictionary *titl = [NSMutableDictionary dictionary];
+    if (title) [titl setObject:title forKey:@"title"];
+    if (year) [titl setObject:year forKey:@"year"];
+    if (type) [titl setObject:type forKey:@"type"];
+    [widgets setObject:titl forKey:@"titl"];
+
+    // The poster widget exposes image / imageURL / posterURL as properties and
+    // was never handed data before; carry all three spellings again.
+    NSMutableDictionary *pstr = [NSMutableDictionary dictionary];
+    if (img) {
+        [pstr setObject:img forKey:@"image"];
+        [pstr setObject:img forKey:@"poster"];
+        [pstr setObject:poster forKey:@"imageURL"];
+        [pstr setObject:poster forKey:@"posterURL"];
+        [pstr setObject:poster forKey:@"url"];
+    }
+    [widgets setObject:pstr forKey:@"pstr"];
+
+    [widgets setObject:[NSDictionary dictionaryWithObject:PeopleFromStars(stars) forKey:@"people"]
+                forKey:@"cast"];
+
+    NSMutableDictionary *photos = [NSMutableDictionary dictionary];
+    [photos setObject:(img ? [NSArray arrayWithObject:
+                              [NSDictionary dictionaryWithObject:img forKey:@"image"]]
+                           : [NSArray array])
+               forKey:@"photos"];
+    [widgets setObject:photos forKey:@"phtos"];
+
+    NSDictionary *emptyPlot = [NSDictionary dictionaryWithObjectsAndKeys:
+                               @"", @"plot", [NSNumber numberWithBool:NO], @"has_more", nil];
+    [widgets setObject:emptyPlot forKey:@"oplot"];
+    [widgets setObject:emptyPlot forKey:@"plotd"];
+    [widgets setObject:[NSDictionary dictionaryWithObject:[NSArray array] forKey:@"genres"]
+                forKey:@"gnrs"];
+    [widgets setObject:[NSDictionary dictionaryWithObject:[info objectForKey:@"tconst"]
+                                                   forKey:@"tconst"]
+                forKey:@"imdbWS"];
+    return widgets;
+}
+
+// First widget node in the layout that carries a title — used by the launch
+// probe to prove the layout copies were patched, not just the widgets map.
+static NSString *FirstWidgetTitleIn(id node) {
+    if ([node isKindOfClass:[NSArray class]]) {
+        for (id n in (NSArray *)node) {
+            NSString *t = FirstWidgetTitleIn(n);
+            if (t) return t;
+        }
+        return nil;
+    }
+    if (![node isKindOfClass:[NSDictionary class]]) return nil;
+    NSDictionary *n = (NSDictionary *)node;
+    if ([[n objectForKey:@"type"] isEqualToString:@"widget"]) {
+        id d = [n objectForKey:@"data"];
+        if ([d isKindOfClass:[NSDictionary class]]) {
+            id t = [d objectForKey:@"title"];
+            if ([t isKindOfClass:[NSString class]]) return t;
+        }
+    }
+    for (NSString *k in [n allKeys]) {
+        id v = [n objectForKey:k];
+        if ([v isKindOfClass:[NSArray class]] || [v isKindOfClass:[NSDictionary class]]) {
+            NSString *t = FirstWidgetTitleIn(v);
+            if (t) return t;
+        }
+    }
+    return nil;
+}
+
+// The layout carries a `data` copy on every widget node; patch those too so a
+// widget reads its own title no matter which lookup path it uses.
+static void PatchWidgetNodes(id node, NSDictionary *widgets) {
+    if ([node isKindOfClass:[NSArray class]]) {
+        for (id n in (NSArray *)node) PatchWidgetNodes(n, widgets);
+        return;
+    }
+    if (![node isKindOfClass:[NSDictionary class]]) return;
+    NSMutableDictionary *n = (NSMutableDictionary *)node;
+    NSString *type = [n objectForKey:@"type"];
+    NSString *name = [n objectForKey:@"name"];
+    if ([type isEqualToString:@"widget"] && [name isKindOfClass:[NSString class]]) {
+        id w = [widgets objectForKey:name];
+        [n setObject:(w ? w : [NSDictionary dictionary]) forKey:@"data"];
+    }
+    for (NSString *k in [n allKeys]) {
+        id v = [n objectForKey:k];
+        if ([v isKindOfClass:[NSArray class]] || [v isKindOfClass:[NSDictionary class]]) {
+            PatchWidgetNodes(v, widgets);
+        }
+    }
+}
 
 #pragma mark - route table
 
@@ -525,7 +978,10 @@ static NSData *JSONErrorBody(NSString *message) {
 // Fixtures are served as-is except for two live fields: `exp` must be in the
 // future or the legacy client treats the payload as stale (§4.5), and tconst
 // must match what was asked for or the page shows the wrong title's data.
-static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString **routeOut, NSString **ctypeOut) {
+// `titleInfo` is the live suggestion answer for this tconst, or nil when there is
+// none: nil means the fixture answers and the page still renders its old title.
+static NSData *ServeRoute(NSURLRequest *request, NSDictionary *titleInfo,
+                          NSInteger *statusOut, NSString **routeOut, NSString **ctypeOut) {
     if (ctypeOut) *ctypeOut = @"application/json";
 
     // Suggestions are JSONP-ish: imdb$<prefix>({...}). The callback name has to
@@ -576,6 +1032,19 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
             if (jtconst && [jdata isKindOfClass:[NSMutableDictionary class]]) {
                 [(NSMutableDictionary *)jdata setObject:jtconst forKey:@"tconst"];
             }
+            // Per-title: the layout, its widget data and the `data` block all
+            // move to the film that was asked for.
+            if ([name isEqualToString:@"title-auxiliary.json"] && titleInfo) {
+                if ([jdata isKindOfClass:[NSMutableDictionary class]]) {
+                    ApplyTitleInfoToTitleData((NSMutableDictionary *)jdata, titleInfo);
+                }
+                NSMutableDictionary *widgets = TitleWidgetsFromInfo(titleInfo);
+                [hd setObject:widgets forKey:@"widgets"];
+                if ([titleInfo objectForKey:@"title"]) {
+                    [hd setObject:[titleInfo objectForKey:@"title"] forKey:@"title"];
+                }
+                PatchWidgetNodes([hd objectForKey:@"sections"], widgets);
+            }
             NSData *hout = [NSJSONSerialization dataWithJSONObject:hd options:0 error:NULL];
             if (hout) {
                 *statusOut = 200;
@@ -597,6 +1066,9 @@ static NSData *ServeRoute(NSURLRequest *request, NSInteger *statusOut, NSString 
         id data = [d objectForKey:@"data"];
         if (tconst && [data isKindOfClass:[NSMutableDictionary class]]) {
             [data setObject:tconst forKey:@"tconst"];
+        }
+        if (titleInfo && [data isKindOfClass:[NSMutableDictionary class]]) {
+            ApplyTitleInfoToTitleData((NSMutableDictionary *)data, titleInfo);
         }
         NSData *out = [NSJSONSerialization dataWithJSONObject:d options:0 error:NULL];
         if (out) {
@@ -674,6 +1146,53 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     return body;
 }
 
+#pragma mark - live per-title lookup
+
+// A tconst is a valid suggestion query, so a title opened from a chart or a link
+// needs no search text. The first path segment is the query's first character;
+// the upsream accepts any of them for an id query, and this keeps the URL in the
+// shape the endpoint documents.
+static NSURL *SuggestionURLForQuery(NSString *query) {
+    NSString *prefix = @"t";
+    if ([query length]) prefix = [[query substringToIndex:1] lowercaseString];
+    NSString *escaped = [query stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+    return [NSURL URLWithString:[NSString stringWithFormat:
+                                @"https://v3.sg.media-imdb.com/suggestion/%@/%@.json",
+                                prefix, escaped]];
+}
+
+// nil means "nothing live": the fixture answers and the page still renders —
+// with its own tconst but the archived film's text, which is the old behaviour.
+static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSString **errOut) {
+    if (![tconst length]) return nil;
+    NSDictionary *hit = CachedTitleInfo(tconst);
+    if (hit) return hit;
+
+    TitleInfoInit();
+    // maindetails and title-auxiliary are asked for in parallel for the same
+    // page; serialise the miss so only one of them goes to the network.
+    [gTitleFetchLock lock];
+    hit = CachedTitleInfo(tconst);
+    if (!hit) {
+        NSData *body = FetchHTTPS(SuggestionURLForQuery(tconst), 8.0, statusOut, NULL, errOut);
+        if (body) {
+            CacheSuggestionBody(body);
+            hit = CachedTitleInfo(tconst);
+            if (!hit && errOut) {
+                // The body head is the difference between "the API does not know
+                // this id" and "we could not read the answer".
+                NSUInteger n = [body length] < 120 ? [body length] : 120;
+                NSString *head = [[[NSString alloc] initWithData:[body subdataWithRange:NSMakeRange(0, n)]
+                                                        encoding:NSUTF8StringEncoding] autorelease];
+                *errOut = [NSString stringWithFormat:@"no entry for this tconst: %@",
+                           head ? head : @"(non-utf8)"];
+            }
+        }
+    }
+    [gTitleFetchLock unlock];
+    return hit;
+}
+
 #pragma mark - protocol
 
 @interface IMDBServeProtocol : NSURLProtocol
@@ -722,12 +1241,19 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     return request;
 }
 
+// Both title routes carry per-title data now, and resolving that is a network
+// call: answered on a worker thread, like search.
+static BOOL IsTitleDataRoute(NSURLRequest *request) {
+    NSString *name = RouteNameForRequest(request);
+    return ([name isEqualToString:@"title-auxiliary.json"] ||
+            [name isEqualToString:@"md-2012.json"]);
+}
+
 - (void)startLoading {
     NSURLRequest *request = [self request];
 
-    // Live first, fixture as the fallback: this is the only route with a real
-    // upstream left. Handled off the caller's thread so search-as-you-type does
-    // not block on it.
+    // Search is the one route whose live answer is worth waiting for; handled
+    // off the caller's thread so search-as-you-type does not block on it.
     if (IsSuggestsRequest(request)) {
         [NSThread detachNewThreadSelector:@selector(runLiveSuggests)
                                  toTarget:self
@@ -743,10 +1269,18 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
         return;
     }
 
+    // Title data: may need one live request before it can answer.
+    if (IsTitleDataRoute(request)) {
+        [NSThread detachNewThreadSelector:@selector(runTitleRoute)
+                                 toTarget:self
+                               withObject:nil];
+        return;
+    }
+
     NSInteger status = 200;
     NSString *route = nil;
     NSString *ctype = @"application/json";
-    NSData *body = ServeRoute(request, &status, &route, &ctype);
+    NSData *body = ServeRoute(request, nil, &status, &route, &ctype);
     if (!body) body = [NSData data];
 
     ProbeLogRequest(request, @"serve",
@@ -867,6 +1401,9 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     NSString *err = nil;
     NSURL *live = LiveSuggestsURL(request);
     NSData *body = FetchLiveSuggests(live, &status, &err);
+    // Every search result the app shows is kept by tconst, so opening one of
+    // them needs no further request.
+    if (body) CacheSuggestionBody(body);
     NSString *source = @"suggests-live";
     NSString *ctype = @"application/javascript";
 
@@ -909,6 +1446,70 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
     [pool release];
 }
 
+// Worker thread: answer maindetails / title-auxiliary with the film that was
+// asked for, not the fixture's. One live suggestion request per new tconst; the
+// answer is cached, so the second route of the same page is free and a title
+// already seen in search costs no request at all.
+- (void)runTitleRoute {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSURLRequest *request = [[self request] retain];
+    NSString *tconst = TconstForRequest(request);
+
+    NSInteger liveStatus = 0;
+    NSString *liveErr = nil;
+    NSDictionary *info = tconst ? FetchTitleInfo(tconst, &liveStatus, &liveErr) : nil;
+
+    NSInteger status = 200;
+    NSString *route = nil;
+    NSString *ctype = nil;
+    NSData *body = ServeRoute(request, info, &status, &route, &ctype);
+    if (!body) body = [NSData data];
+
+    NSMutableDictionary *extra = [NSMutableDictionary dictionary];
+    [extra setObject:(route ? route : @"(none)") forKey:@"route"];
+    [extra setObject:[NSNumber numberWithInteger:status] forKey:@"served_status"];
+    [extra setObject:[NSNumber numberWithUnsignedInteger:[body length]] forKey:@"served_bytes"];
+    [extra setObject:(info ? @"live" : @"fixture") forKey:@"title_source"];
+    if (tconst) [extra setObject:tconst forKey:@"tconst"];
+    if (info) {
+        if ([info objectForKey:@"title"]) [extra setObject:[info objectForKey:@"title"] forKey:@"title"];
+        id stars = [info objectForKey:@"stars"];
+        [extra setObject:[NSNumber numberWithUnsignedInteger:
+                          ([stars isKindOfClass:[NSArray class]] ? [stars count] : 0)]
+                  forKey:@"stars"];
+        if ([info objectForKey:@"poster"]) [extra setObject:[info objectForKey:@"poster"] forKey:@"poster"];
+    }
+    if (liveErr) [extra setObject:liveErr forKey:@"live_error"];
+    ProbeLogRequest(request, @"serve", extra);
+
+    if (!_cancelled) {
+        NSData *outBody = [body retain];
+        NSString *outCtype = [(ctype ? ctype : @"application/json") retain];
+        NSInteger outStatus = status;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!_cancelled) {
+                NSDictionary *headers = [NSDictionary dictionaryWithObjectsAndKeys:
+                                         outCtype, @"Content-Type",
+                                         [NSString stringWithFormat:@"%lu", (unsigned long)[outBody length]], @"Content-Length",
+                                         nil];
+                NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
+                                                                    statusCode:outStatus
+                                                                   HTTPVersion:@"HTTP/1.1"
+                                                                  headerFields:headers];
+                [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+                if ([outBody length]) [[self client] URLProtocol:self didLoadData:outBody];
+                [[self client] URLProtocolDidFinishLoading:self];
+                [out release];
+            }
+            [outBody release];
+            [outCtype release];
+        });
+    }
+
+    [request release];
+    [pool release];
+}
+
 @end
 
 %ctor {
@@ -919,7 +1520,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"3.7-reach" forKey:@"build"];
+    [d setObject:@"3.8-titleinfo" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
