@@ -178,7 +178,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"3.8-titleinfo" forKey:@"build"];
+    [d setObject:@"3.9-fullcredits" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -509,6 +509,47 @@ static NSString *FirstWidgetTitleIn(id node);
             if (layoutTitle) [a setObject:layoutTitle forKey:@"layout_title"];
         }
         ProbeEmit(a);
+
+        // Full cast: the same route the "full cast" button hits, built the way
+        // the app would get it, so a per-title header can be checked against it.
+        NSURLRequest *fcReq = [NSURLRequest requestWithURL:
+                               [NSURL URLWithString:[NSString stringWithFormat:
+                               @"http://app.imdb.com/title/fullcredits?tconst=%@", tid]]];
+        NSInteger fs = 0;
+        NSString *froute = nil;
+        NSString *fctype = nil;
+        NSData *fbody = ServeRoute(fcReq, info, &fs, &froute, &fctype);
+        id froot = fbody ? [NSJSONSerialization JSONObjectWithData:fbody options:0 error:NULL] : nil;
+        NSMutableDictionary *f = [NSMutableDictionary dictionary];
+        [f setObject:@"titlecredits" forKey:@"event"];
+        [f setObject:tid forKey:@"tconst"];
+        [f setObject:(froute ? froute : @"(none)") forKey:@"route"];
+        [f setObject:[NSNumber numberWithUnsignedInteger:[fbody length]] forKey:@"bytes"];
+        [f setObject:[NSNumber numberWithBool:(froot != nil)] forKey:@"json_ok"];
+        [f setObject:ProbeISO8601() forKey:@"ts"];
+        id fdata = [froot isKindOfClass:[NSDictionary class]] ? [froot objectForKey:@"data"] : nil;
+        if ([fdata isKindOfClass:[NSDictionary class]]) {
+            if ([fdata objectForKey:@"title"]) [f setObject:[fdata objectForKey:@"title"] forKey:@"title"];
+            id fgroups = [fdata objectForKey:@"groups"];
+            if ([fgroups isKindOfClass:[NSArray class]]) {
+                [f setObject:[NSNumber numberWithUnsignedInteger:[fgroups count]] forKey:@"groups"];
+                if ([fgroups count]) {
+                    id g0 = [fgroups objectAtIndex:0];
+                    id gc = [g0 isKindOfClass:[NSDictionary class]] ? [g0 objectForKey:@"credits"] : nil;
+                    if ([gc isKindOfClass:[NSArray class]]) {
+                        [f setObject:[NSNumber numberWithUnsignedInteger:[gc count]] forKey:@"cast"];
+                        NSMutableArray *names = [NSMutableArray array];
+                        for (id c in gc) {
+                            id nm = [c isKindOfClass:[NSDictionary class]] ? [c objectForKey:@"name"] : nil;
+                            id n = [nm isKindOfClass:[NSDictionary class]] ? [nm objectForKey:@"name"] : nil;
+                            if ([n isKindOfClass:[NSString class]]) [names addObject:n];
+                        }
+                        [f setObject:[names componentsJoinedByString:@" | "] forKey:@"names"];
+                    }
+                }
+            }
+        }
+        ProbeEmit(f);
     }
 
     [pool release];
@@ -793,6 +834,92 @@ static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
     return widgets;
 }
 
+// /title/fullcredits is asked for in parallel with maindetails and should agree
+// with the header. It is usually sent with ?tconst=; when it is not, the last
+// title route this process answered is the page being opened.
+static NSString *gLastTitleTconst = nil;
+
+static void SetLastTitleTconst(NSString *tconst) {
+    if (![tconst length]) return;
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    [gLastTitleTconst release];
+    gLastTitleTconst = [tconst copy];
+    [gTitleInfoLock unlock];
+}
+
+static NSString *LastTitleTconst(void) {
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    NSString *t = [gLastTitleTconst retain];
+    [gTitleInfoLock unlock];
+    return [t autorelease];
+}
+
+// One credit, in the shape shim/build-fullcredits.py emits: IMCredit reads
+// `name`, `char`, `characters`, `job`, `as`. The API knows the names only, so
+// there is no character, job or portrait to claim.
+static NSDictionary *CreditForName(NSString *name) {
+    return [NSDictionary dictionaryWithObjectsAndKeys:
+            [NSDictionary dictionaryWithObject:name forKey:@"name"], @"name",
+            @"", @"char",
+            @"", @"character",
+            [NSArray array], @"characters",
+            [NSNumber numberWithBool:NO], @"hasCharacter",
+            @"", @"job",
+            @"", @"as",
+            @"", @"attribution",
+            nil];
+}
+
+// Same envelope and the same repeated payload keys as the fixture, so the app
+// parses this exactly like the archived body: one group, its credits under
+// `credits`/`groups`/`list`, and the cast and groups again at top level.
+static NSData *FullCreditsForInfo(NSDictionary *info) {
+    if (!info) return nil;
+    NSString *title = [info objectForKey:@"title"];
+    NSString *tconst = [info objectForKey:@"tconst"];
+    NSArray *stars = [info objectForKey:@"stars"];
+    if (![stars isKindOfClass:[NSArray class]]) stars = [NSArray array];
+
+    NSMutableArray *cast = [NSMutableArray array];
+    for (NSString *n in stars) {
+        if ([n isKindOfClass:[NSString class]]) [cast addObject:CreditForName(n)];
+    }
+
+    NSMutableArray *groups = [NSMutableArray array];
+    if ([cast count]) {
+        [groups addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                           @"Cast", @"name",
+                           @"Cast", @"title",
+                           @"cast", @"category",
+                           [NSNumber numberWithUnsignedInteger:[cast count]], @"totalCreditsCount",
+                           cast, @"credits",
+                           cast, @"groups",
+                           cast, @"list",
+                           nil]];
+    }
+
+    NSDictionary *data = [NSDictionary dictionaryWithObjectsAndKeys:
+                          (tconst ? tconst : @""), @"tconst",
+                          (title ? title : @""), @"title",
+                          groups, @"groups",
+                          groups, @"credits",
+                          cast, @"cast",
+                          [NSNumber numberWithUnsignedInteger:[cast count]], @"totalCreditsCount",
+                          nil];
+    NSDictionary *meta = [NSDictionary dictionaryWithObjectsAndKeys:
+                          [NSNumber numberWithInt:21], @"serverTimeMs",
+                          @"imdb-revival-local", @"requestId",
+                          nil];
+    NSDictionary *root = [NSDictionary dictionaryWithObjectsAndKeys:
+                          [NSNumber numberWithLongLong:(long long)time(NULL) + 3600], @"exp",
+                          meta, @"@meta",
+                          data, @"data",
+                          nil];
+    return [NSJSONSerialization dataWithJSONObject:root options:0 error:NULL];
+}
+
 // First widget node in the layout that carries a title — used by the launch
 // probe to prove the layout copies were patched, not just the widgets map.
 static NSString *FirstWidgetTitleIn(id node) {
@@ -1006,6 +1133,16 @@ static NSData *ServeRoute(NSURLRequest *request, NSDictionary *titleInfo,
     if ([name isEqualToString:@"hello.json"]) {
         *statusOut = 200;
         return raw;
+    }
+
+    // Full cast follows the header: the billed names of the open title, not the
+    // archived film's whole call sheet.
+    if ([name isEqualToString:@"fullcredits.json"] && titleInfo) {
+        NSData *fc = FullCreditsForInfo(titleInfo);
+        if (fc) {
+            *statusOut = 200;
+            return fc;
+        }
     }
 
     // The homepage payload is not the app.imdb.com envelope: it carries
@@ -1246,7 +1383,8 @@ static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSSt
 static BOOL IsTitleDataRoute(NSURLRequest *request) {
     NSString *name = RouteNameForRequest(request);
     return ([name isEqualToString:@"title-auxiliary.json"] ||
-            [name isEqualToString:@"md-2012.json"]);
+            [name isEqualToString:@"md-2012.json"] ||
+            [name isEqualToString:@"fullcredits.json"]);
 }
 
 - (void)startLoading {
@@ -1454,10 +1592,16 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSURLRequest *request = [[self request] retain];
     NSString *tconst = TconstForRequest(request);
+    // fullcredits is often sent without the id; the page being opened is the
+    // one the previous title route answered.
+    BOOL fromRequest = ([tconst length] > 0);
+    if (!tconst) tconst = LastTitleTconst();
 
     NSInteger liveStatus = 0;
     NSString *liveErr = nil;
     NSDictionary *info = tconst ? FetchTitleInfo(tconst, &liveStatus, &liveErr) : nil;
+    if (tconst) SetLastTitleTconst(tconst);
+    (void)fromRequest;
 
     NSInteger status = 200;
     NSString *route = nil;
@@ -1470,6 +1614,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     [extra setObject:[NSNumber numberWithInteger:status] forKey:@"served_status"];
     [extra setObject:[NSNumber numberWithUnsignedInteger:[body length]] forKey:@"served_bytes"];
     [extra setObject:(info ? @"live" : @"fixture") forKey:@"title_source"];
+    [extra setObject:(fromRequest ? @"request" : (tconst ? @"last" : @"none")) forKey:@"tconst_source"];
     if (tconst) [extra setObject:tconst forKey:@"tconst"];
     if (info) {
         if ([info objectForKey:@"title"]) [extra setObject:[info objectForKey:@"title"] forKey:@"title"];
@@ -1520,7 +1665,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"3.8-titleinfo" forKey:@"build"];
+    [d setObject:@"3.9-fullcredits" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")

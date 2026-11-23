@@ -199,7 +199,7 @@ created — the data shape is not the reason. Supplying the data nested per widg
 aliases, changed nothing. The layout the app builds omits that widget; finding the lookup that feeds
 it needs a recording hook, not more guessing.
 
-### Every title gets its own name, year, stars and poster (build `3.8-titleinfo`)
+### Every title gets its own name, year, stars and poster — and its own full cast (build `3.9-fullcredits`)
 
 Until this build the title routes answered from `md-2012.json` and only substituted `tconst`, so
 every film rendered Fight Club. The suggestion API is the one live endpoint that answers a bare
@@ -233,18 +233,20 @@ byte count the reach probe logged); `PosterThumbURL` swaps the `_V1_.jpg` tail f
 which returns the same image at 61,525 B. The poster *widget* is still never created (§ above), so
 this changes the image the page can load, not whether that widget appears.
 
+**Full cast follows the header.** `/title/fullcredits` was the last route still answering from the fixture, so the cast list contradicted the title above it. It now uses the same `FetchTitleInfo` answer: one `Cast` group holding the billed names, the right `data.title`/`tconst`, and the fixture's envelope and repeated payload keys (`credits`/`groups`/`list`) so the app parses it unchanged. The route often arrives without an id, so the `tconst` comes from the request when present and otherwise from the last title route this process answered. Characters, jobs and portraits are left empty — the API does not supply them, and the fixture's would be another film's. `/title/fullcredits` is therefore also answered on a worker thread now; three routes of one page share a single live request.
+
 **Fallback.** A `tconst` with no live entry (measured: `tt9999999`) logs
 `title_source=fixture` with the API's body head as the reason, and the page renders the archived film
 exactly as before. Nothing throws away a working page to gain live data.
 
 Measured on the device in one launch (`3.8-titleinfo`, four ids):
 
-| tconst | source | name / year | stars | `maindetails` | `title-auxiliary` |
-|---|---|---|---|---|---|
-| tt0133093 | live | The Matrix / 1999 | Keanu Reeves, Laurence Fishburne | 914 B | 14,754 B, hero+layout+data = The Matrix |
-| tt0068646 | live | The Godfather / 1972 | Marlon Brando, Al Pacino | 909 B | 14,745 B, hero+layout+data = The Godfather |
-| tt0111161 | live | The Shawshank Redemption / 1994 | Tim Robbins, Morgan Freeman | 923 B | 14,809 B, hero+layout+data = The Shawshank Redemption |
-| tt9999999 | fixture | Fight Club / 1999 | Brad Pitt, Edward Norton… | 8,888 B | 32,618 B, unchanged |
+| tconst | source | name / year | stars | `maindetails` | `title-auxiliary` | `fullcredits` |
+|---|---|---|---|---|---|---|
+| tt0133093 | live | The Matrix / 1999 | Keanu Reeves, Laurence Fishburne | 914 B | 14,754 B, hero+layout+data = The Matrix | 2,238 B, 1 group = the 2 names |
+| tt0068646 | live | The Godfather / 1972 | Marlon Brando, Al Pacino | 909 B | 14,745 B, hero+layout+data = The Godfather | 2,185 B, 1 group = the 2 names |
+| tt0111161 | live | The Shawshank Redemption / 1994 | Tim Robbins, Morgan Freeman | 923 B | 14,809 B, hero+layout+data = The Shawshank Redemption | 2,217 B, 1 group = the 2 names |
+| tt9999999 | fixture | Fight Club / 1999 | Brad Pitt, Edward Norton… | 8,888 B | 32,618 B, unchanged | 20,784 B, unchanged (3 groups, 4 cast) |
 
 ## Two device-specific facts that shape everything here
 
