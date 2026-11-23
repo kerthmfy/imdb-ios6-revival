@@ -224,12 +224,44 @@ Substrate is meant to bootstrap; on 6.1.3 it appears not to be processed. **Do n
 launch; by hand it is `cynject $(launchctl list | grep -i imdb | cut -f1) <dylib>`.
 
 Consequence for the capture work: the Mac-side `shim/` remains the reference implementation, and
-the on-device tweak is driven by hand. Live-data fetch from the device is also limited: its own TLS
-stack completes a handshake with `m.media-amazon.com` (posters work) but fails against
-`sg.media-imdb.com` and `api.graphql.imdb.com` with `NSURLErrorDomain -1200`, which is why search
-suggestions are served locally. Crashes seen while testing were watchdog kills (`0x8badf00d`)
-caused by launching the app over SSH (`uiopen`), which also happens with no tweak installed — they
-are not caused by the tweak.
+the on-device tweak is driven by hand. Crashes seen while testing were watchdog kills
+(`0x8badf00d`) caused by launching the app over SSH (`uiopen`), which also happens with no tweak
+installed — they are not caused by the tweak.
+
+### What the device can reach with tlsfix (measured 2026-11-24, build `3.7-reach`)
+
+`Tweak.xm` has a host-matrix probe (`IMDBLiveTest`) that runs at load when
+`/Library/IMDbRevival/livetest` exists, fetches each candidate one at a time on a background
+thread, and writes one `livetest` line per target with `status`, `bytes`, `ms`, `ctype`, `head` and
+a `verdict` (`usable` = 200 with a body, `reachable` = handshake completed but no usable body,
+`tls-wall` = an `NSError` came back). Measured in-process, tlsfix loaded:
+
+| target | URL | result | verdict |
+|---|---|---|---|
+| `sg-raw` | `sg.media-imdb.com/suggests/t/the.json` | 200, 1,874 B, JSONP | usable |
+| `v3-raw` | `v3.sg.media-imdb.com/suggestion/t/the.json` | 200, 2,146 B, JSON | usable |
+| `amazon-image` | `m.media-amazon.com/images/M/…jpg` | 200, 3,728,582 B, `image/jpeg` | usable |
+| `www-title` | `www.imdb.com/title/tt0133093/` | 202, **0 B** | reachable |
+| `www-browser` | same, Chrome UA + Origin/Referer/Accept | 202, 1,997 B challenge page | reachable |
+| `m-title` | `m.imdb.com/title/tt0133093/` | 202, 0 B | reachable |
+| `graphql-api` | `api.graphql.imdb.com/` (POST) | **403**, 919 B CloudFront "Request blocked" | reachable |
+| `graphql-cache` | `caching.graphql.imdb.com/` (POST) | 403, 919 B, same page | reachable |
+| `graphql-browser` | same, browser headers | 403, 919 B, same page | reachable |
+
+**The TLS wall is gone.** Every target completed a handshake; not one produced an `NSError`. The
+earlier `-9824` / `-1200` failures were purely the missing tlsfix, not the hosts.
+
+**The new wall is at the edge, and it is not device-specific.** The same `curl` from the Mac
+returns byte-identical results — `202`/0 B for the title page with either UA, and the same 919-byte
+CloudFront "Request blocked" page for GraphQL. Plain HTTP clients are refused at the CDN for both
+hosts, so a relay on the Mac would gain nothing: it hits the same block. What still works over plain
+HTTPS is the suggestion API (title, year, stars, poster per tconst) and the image CDN.
+
+So live per-title data needs either a relay that carries a *real browser session* (cookies/JS
+challenge solved on the Mac, results reshaped into the `md-2012` envelope — the device is not the
+obstacle) or no live fetch at all: suggestions + a prebuilt title pack, both of which the device
+can already fetch/serve itself. Re-run the matrix any time with
+touch /Library/IMDbRevival/livetest && relaunch.
 
 ## imdb-capture
 

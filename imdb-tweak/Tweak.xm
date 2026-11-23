@@ -178,7 +178,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"3.6-accessors" forKey:@"build"];
+    [d setObject:@"3.7-reach" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -244,13 +244,43 @@ static NSString *LoadTLSFix(void) {
 @implementation IMDBLiveTest
 
 - (void)probeURL:(NSString *)url label:(NSString *)label bypassTweak:(BOOL)bypass {
+    [self probeURL:url label:label bypassTweak:bypass method:@"GET" body:nil ctype:nil timeout:20];
+}
+
+// One probe, one `livetest` line.
+//
+// For a host matrix the decisive field is not `status` but whether an NSError
+// came back at all. -9824 (errSSLPeerHandshakeFail) and -1200 are the TLS wall:
+// the handshake never completed, so no HTTP status exists. Any status — 200,
+// 403, 400 from a GraphQL POST — means TLS succeeded and the host is reachable
+// for live data. `error_code` nil + `status` present is the pass condition.
+- (void)probeURL:(NSString *)url label:(NSString *)label bypassTweak:(BOOL)bypass
+          method:(NSString *)method body:(NSData *)body ctype:(NSString *)ctype
+         timeout:(NSTimeInterval)timeout {
+    [self probeURL:url label:label bypassTweak:bypass method:method body:body ctype:ctype
+           timeout:timeout headers:nil];
+}
+
+// `headers` overrides the default UA and adds Origin/Referer/Accept. Called with
+// nil by every legacy probe, so only the header experiment changes behaviour.
+- (void)probeURL:(NSString *)url label:(NSString *)label bypassTweak:(BOOL)bypass
+          method:(NSString *)method body:(NSData *)body ctype:(NSString *)ctype
+         timeout:(NSTimeInterval)timeout headers:(NSDictionary *)headers {
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
-    [req setTimeoutInterval:20];
+    [req setTimeoutInterval:timeout];
     // Without this a cached body makes a broken TLS path look healthy: the first
     // no-tlsfix run reported 200/3,170 B from cache while the fetch was failing.
     [req setCachePolicy:NSURLRequestReloadIgnoringLocalCacheData];
     // A real UA matters: api.graphql.imdb.com answered 403 to a bare POST in E5.
     [req setValue:@"IMDb/3.4.2 (iPad; iPhone OS 6.1.3)" forHTTPHeaderField:@"User-Agent"];
+    for (NSString *k in headers) {
+        [req setValue:[headers objectForKey:k] forHTTPHeaderField:k];
+    }
+    if (method) [req setHTTPMethod:method];
+    if (body) {
+        [req setHTTPBody:body];
+        [req setValue:(ctype ? ctype : @"application/json") forHTTPHeaderField:@"Content-Type"];
+    }
     // IsSuggestsRequest matches https too, so without this the "raw" probe is
     // answered by our own protocol and its bytes say nothing about TLS.
     if (bypass) {
@@ -259,9 +289,13 @@ static NSString *LoadTLSFix(void) {
 
     NSHTTPURLResponse *resp = nil;
     NSError *err = nil;
-    NSData *body = [NSURLConnection sendSynchronousRequest:req
-                                         returningResponse:(NSURLResponse **)&resp
-                                                     error:&err];
+    // Elapsed time separates "refused/failed fast" from "handshake hung until
+    // the timeout", which the error code alone does not.
+    NSDate *started = [NSDate date];
+    NSData *bodyIn = [NSURLConnection sendSynchronousRequest:req
+                                           returningResponse:(NSURLResponse **)&resp
+                                                       error:&err];
+    NSTimeInterval elapsed = -[started timeIntervalSinceNow];
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"livetest" forKey:@"event"];
@@ -270,16 +304,23 @@ static NSString *LoadTLSFix(void) {
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:[NSNumber numberWithBool:TLSFixImageLoaded()] forKey:@"tlsfix"];
+    [d setObject:[NSNumber numberWithInt:(int)(elapsed * 1000)] forKey:@"ms"];
 
     if (err) {
         [d setObject:[NSNumber numberWithInteger:[err code]] forKey:@"error_code"];
         [d setObject:[[err userInfo] description] forKey:@"error"];
+        [d setObject:@"tls-wall" forKey:@"verdict"];
     } else {
         [d setObject:[NSNumber numberWithInteger:[resp statusCode]] forKey:@"status"];
-        [d setObject:[NSNumber numberWithUnsignedInteger:[body length]] forKey:@"bytes"];
-        if ([body length]) {
-            NSUInteger n = [body length] < 160 ? [body length] : 160;
-            NSString *head = [[[NSString alloc] initWithData:[body subdataWithRange:NSMakeRange(0, n)]
+        [d setObject:[NSNumber numberWithUnsignedInteger:[bodyIn length]] forKey:@"bytes"];
+        NSString *ct = [[resp allHeaderFields] objectForKey:@"Content-Type"];
+        if (ct) [d setObject:ct forKey:@"ctype"];
+        // A status means the handshake completed. 200 with a body means usable.
+        [d setObject:([resp statusCode] == 200 && [bodyIn length] > 0) ? @"usable" : @"reachable"
+               forKey:@"verdict"];
+        if ([bodyIn length]) {
+            NSUInteger n = [bodyIn length] < 160 ? [bodyIn length] : 160;
+            NSString *head = [[[NSString alloc] initWithData:[bodyIn subdataWithRange:NSMakeRange(0, n)]
                                                     encoding:NSUTF8StringEncoding] autorelease];
             if (head) [d setObject:head forKey:@"head"];
         }
@@ -299,6 +340,53 @@ static NSString *LoadTLSFix(void) {
     // A prefix upstream has nothing for: must end up on the fixture, not an
     // empty page. The serve line says which side answered.
     [self probeURL:@"http://sg.media-imdb.com/suggests/z/zzzqqqx.json" label:@"sg-fallback" bypassTweak:NO];
+
+    // --- host matrix (3.7-reach) -------------------------------------------------
+    // The question this answers: can live per-title data be assembled ON the
+    // device, or does it need a relay on the Mac? Each label is one candidate
+    // source of title data, probed with the UA the app itself sends.
+
+    // Known-good asset: the poster path the fixture already renders, so a
+    // failure here is TLS and not a typo'd URL.
+    [self probeURL:@"https://m.media-amazon.com/images/M/MV5BN2NmN2VhMTQtMDNiOS00NDlhLTliMjgtODE2ZTY0ODQyNDRhXkEyXkFqcGc@._V1_.jpg"
+             label:@"amazon-image" bypassTweak:YES method:@"GET" body:nil ctype:nil timeout:12];
+
+    // The current IMDb web page: modern pages embed __NEXT_DATA__ / JSON-LD, so
+    // if this returns HTML at all, per-title data is one parse away.
+    [self probeURL:@"https://www.imdb.com/title/tt0133093/"
+             label:@"www-title" bypassTweak:YES method:@"GET" body:nil ctype:nil timeout:12];
+    [self probeURL:@"https://m.imdb.com/title/tt0133093/"
+             label:@"m-title" bypassTweak:YES method:@"GET" body:nil ctype:nil timeout:12];
+
+    // GraphQL. A 400/403 is still a pass for reachability; only an NSError is
+    // the wall. Both hosts are probed because the app and the modern web client
+    // use different ones.
+    NSData *gql = [[@"{\"query\":\"query { title(id: \\\"tt0133093\\\") { id titleText { text } } }\"}"
+                    dataUsingEncoding:NSUTF8StringEncoding] retain];
+    [self probeURL:@"https://api.graphql.imdb.com/" label:@"graphql-api" bypassTweak:YES
+            method:@"POST" body:gql ctype:@"application/json" timeout:12];
+    [self probeURL:@"https://caching.graphql.imdb.com/" label:@"graphql-cache" bypassTweak:YES
+            method:@"POST" body:gql ctype:@"application/json" timeout:12];
+
+    // Phase 2: the same three, dressed as a browser. This separates the two
+    // explanations for 202/0-byte and 403: "nobody told us we were a browser"
+    // (fixable in-request) vs "there is an auth/challenge gate" (needs a relay).
+    NSDictionary *browser = [NSDictionary dictionaryWithObjectsAndKeys:
+        @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        @"(KHTML, like Gecko) Chrome/120.0 Safari/537.36", @"User-Agent",
+        @"https://www.imdb.com", @"Origin",
+        @"https://www.imdb.com/title/tt0133093/", @"Referer",
+        @"text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8", @"Accept",
+        @"en-US,en;q=0.9", @"Accept-Language",
+        nil];
+    [self probeURL:@"https://www.imdb.com/title/tt0133093/" label:@"www-browser" bypassTweak:YES
+            method:@"GET" body:nil ctype:nil timeout:12 headers:browser];
+    [self probeURL:@"https://m.imdb.com/title/tt0133093/" label:@"m-browser" bypassTweak:YES
+            method:@"GET" body:nil ctype:nil timeout:12 headers:browser];
+    [self probeURL:@"https://api.graphql.imdb.com/" label:@"graphql-browser" bypassTweak:YES
+            method:@"POST" body:gql ctype:@"application/json" timeout:12 headers:browser];
+    [gql release];
+
     [pool release];
 }
 
@@ -831,7 +919,7 @@ static NSData *FetchLiveSuggests(NSURL *url, NSInteger *statusOut, NSString **er
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"3.6-accessors" forKey:@"build"];
+    [d setObject:@"3.7-reach" forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
