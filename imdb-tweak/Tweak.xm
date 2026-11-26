@@ -26,7 +26,7 @@
 
 #import <Foundation/Foundation.h>
 
-#define kBuildTag @"4.15-imgserial"
+#define kBuildTag @"4.16-httpserial"
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -1808,8 +1808,27 @@ static NSURL *LiveSuggestsURL(NSURLRequest *request) {
 // One live fetch for both relays (suggestions and images). They differ only in
 // timeout, in what counts as a usable body, and in caching, so the request
 // plumbing lives here once instead of twice.
+// One HTTPS fetch at a time. The crash that survived the two-at-a-time image gate
+// was EXC_BAD_ACCESS inside CFNetwork, on the thread of our own
+// sendSynchronousRequest: this API spins an internal run loop, and several of
+// those in flight at once (search + title + OMDb + TMDB + a grid of posters) is
+// not something iOS 6 tolerates. A recursive lock keeps the sequential callers
+// (title -> OMDb -> TMDB) working without changing their order.
+static NSRecursiveLock *gHTTPLock = nil;
+static NSData *FetchHTTPSRaw(NSURL *url, NSTimeInterval timeout, NSInteger *statusOut,
+                             NSString **ctypeOut, NSString **errOut);
+
 static NSData *FetchHTTPS(NSURL *url, NSTimeInterval timeout, NSInteger *statusOut,
                           NSString **ctypeOut, NSString **errOut) {
+    if (!gHTTPLock) gHTTPLock = [[NSRecursiveLock alloc] init];
+    [gHTTPLock lock];
+    NSData *out = FetchHTTPSRaw(url, timeout, statusOut, ctypeOut, errOut);
+    [gHTTPLock unlock];
+    return out;
+}
+
+static NSData *FetchHTTPSRaw(NSURL *url, NSTimeInterval timeout, NSInteger *statusOut,
+                             NSString **ctypeOut, NSString **errOut) {
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     [req setTimeoutInterval:timeout];
     // Live means live: a cached copy would hide a broken TLS path and make the
@@ -2328,7 +2347,7 @@ static BOOL ImageGateEnter(void) {
     NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:12.0];
     for (;;) {
         [gImageGate lock];
-        if (gImageBusy < 2) {
+        if (gImageBusy < 1) {
             gImageBusy++;
             [gImageGate unlock];
             return YES;
