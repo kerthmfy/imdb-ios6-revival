@@ -26,7 +26,7 @@
 
 #import <Foundation/Foundation.h>
 
-#define kBuildTag @"4.7-uncache"
+#define kBuildTag @"4.15-imgserial"
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -794,12 +794,27 @@ static NSString *SuggestionString(id v) {
 // The API hands out the original poster (2100x3156, 3.7 MB measured on this
 // device). The 2012 layout wants 336x500, so ask the same object for the
 // `_SX400` variant instead. Any other URL shape is returned untouched.
+// This app predates every image host we can reach: it only ever asks
+// ia.media-imdb.com over plain http, and that origin is dead. URLs are rewritten
+// onto that host anyway and the tweak's image route relays the real bytes from
+// whichever https origin serves them — no image was ever requested while the
+// payload carried m.media-amazon.com / image.tmdb.org URLs.
+static NSString *ImageURLForApp(NSString *url) {
+    if (![url isKindOfClass:[NSString class]] || ![url length]) return url;
+    NSRange r = [url rangeOfString:@"/images/"];
+    if (r.location == NSNotFound) return url;
+    return [@"http://ia.media-imdb.com" stringByAppendingString:[url substringFromIndex:r.location]];
+}
+
 static NSString *PosterThumbURL(NSString *url) {
-    if (![url hasSuffix:@"_V1_.jpg"]) return url;
-    return [url stringByReplacingOccurrencesOfString:@"_V1_.jpg"
-                                          withString:@"_V1_SX400.jpg"
-                                             options:NSBackwardsSearch
-                                               range:NSMakeRange(0, [url length])];
+    if (![url isKindOfClass:[NSString class]]) return url;
+    NSString *thumb = [url hasSuffix:@"_V1_.jpg"]
+        ? [url stringByReplacingOccurrencesOfString:@"_V1_.jpg"
+                                         withString:@"_V1_SX400.jpg"
+                                            options:NSBackwardsSearch
+                                              range:NSMakeRange(0, [url length])]
+        : url;
+    return ImageURLForApp(thumb);
 }
 
 // One suggestion entry -> the fields a title page needs.
@@ -1002,8 +1017,21 @@ static NSMutableArray *CastEntriesFromInfo(NSDictionary *info) {
             [person setObject:@"" forKey:@"nconst"];
             id img = [p objectForKey:@"image"];
             if ([img isKindOfClass:[NSString class]] && [img length]) {
+                // image.tmdb.org -> ia.media-imdb.com/images/tmdb/<file>, which
+                // the image route relays from TMDB.
+                NSString *appURL = nil;
+                NSRange tmdb = [(NSString *)img rangeOfString:@"/t/p/" ];
+                if (tmdb.location != NSNotFound) {
+                    NSString *tail = [(NSString *)img substringFromIndex:tmdb.location + 5];
+                    NSRange slash = [tail rangeOfString:@"/"];
+                    if (slash.location != NSNotFound) {
+                        appURL = [@"http://ia.media-imdb.com/images/tmdb/"
+                                  stringByAppendingString:[tail substringFromIndex:slash.location + 1]];
+                    }
+                }
+                if (!appURL) appURL = ImageURLForApp((NSString *)img);
                 [person setObject:[NSDictionary dictionaryWithObjectsAndKeys:
-                                   img, @"url",
+                                   appURL, @"url",
                                    [NSNumber numberWithInt:185], @"width",
                                    [NSNumber numberWithInt:278], @"height", nil]
                            forKey:@"image"];
@@ -1484,9 +1512,53 @@ static BOOL IsImageRequest(NSURLRequest *request) {
     return [request.URL.path hasPrefix:@"/images/"];
 }
 
+// The app rewrites every image URL it is given into its own sizing scheme, so a
+// TMDB file arrives as `abc._SX81_CR0,0,81,120.jpg` — a name that does not exist
+// upstream (10 of 10 relays answered 404 before this). Cut the IMDb suffix off
+// and keep the plain file name.
+static NSString *StripSizingSuffix(NSString *file) {
+    NSRange sx = [file rangeOfString:@"._SX"];
+    if (sx.location == NSNotFound) sx = [file rangeOfString:@"_SX"];
+    if (sx.location == NSNotFound) return file;
+    NSString *base = [file substringToIndex:sx.location];
+    NSString *ext = [file pathExtension];
+    if (![ext length] || [ext length] > 5) ext = @"jpg";
+    return [base stringByAppendingFormat:@".%@", ext];
+}
+
+// The app asks for the size it needs (`._SX82_CR0,0,82,120` in a row). Relaying
+// the original instead is what killed it: six posters of 45 KB to 1 MB decoded
+// at once on a 512 MB iPad 2 is a jetsam. Ask the origin for that width.
+static NSInteger RequestedImageWidth(NSString *path) {
+    NSRange sx = [path rangeOfString:@"._SX"];
+    if (sx.location == NSNotFound) return 0;
+    NSString *tail = [path substringFromIndex:sx.location + 4];
+    NSInteger w = [tail integerValue];
+    if (w < 16 || w > 2000) return 0;
+    return w;
+}
+
 static NSURL *LiveImageURL(NSURLRequest *request) {
-    NSString *path = request.URL.path ? request.URL.path : @"/images/";
+    NSString *rawPath = request.URL.path ? request.URL.path : @"/images/";
+    NSInteger wantWidth = RequestedImageWidth(rawPath);
+    NSString *path = rawPath;
     NSString *query = request.URL.query;
+    // Headshots come from TMDB and are parked under /images/tmdb/ on this host.
+    if ([path hasPrefix:@"/images/tmdb/"]) {
+        NSString *file = [path substringFromIndex:[@"/images/tmdb/" length]];
+        file = StripSizingSuffix(file);
+        NSString *bucket = (wantWidth > 0 && wantWidth <= 92) ? @"w92" : @"w185";
+        return [NSURL URLWithString:[NSString stringWithFormat:
+                                     @"https://image.tmdb.org/t/p/%@/%@", bucket, file]];
+    }
+    path = [@"/images/" stringByAppendingString:
+            StripSizingSuffix([path substringFromIndex:[@"/images/" length]])];
+    if (wantWidth > 0 && [path hasSuffix:@"_V1_.jpg"]) {
+        path = [path stringByReplacingOccurrencesOfString:@"_V1_.jpg"
+                                              withString:[NSString stringWithFormat:@"_SX%ld.jpg", (long)wantWidth]
+                                                 options:NSBackwardsSearch
+                                                   range:NSMakeRange(0, [path length])];
+    }
     NSString *s = [NSString stringWithFormat:@"https://m.media-amazon.com%@%@", path,
                    [query length] ? [@"?" stringByAppendingString:query] : @""];
     return [NSURL URLWithString:s];
@@ -1544,6 +1616,25 @@ static NSData *JSONErrorBody(NSString *message);
 // Offline answer for a suggestions request: the archived capture, re-wrapped in
 // the JSONP form the app expects. This is the fallback whenever the live fetch
 // fails, so search keeps working with no network and no tlsfix.
+// A search row draws its poster straight from the URL in the suggestion entry,
+// and this app only ever asks ia.media-imdb.com over http — so every image host
+// in a suggestion body lands on that host, where the image route relays the
+// bytes (and strips the sizing suffix the app adds to the file name).
+static NSData *RewriteImageHosts(NSData *body) {
+    if (![body length]) return body;
+    NSString *text = [[[NSString alloc] initWithData:body encoding:NSUTF8StringEncoding] autorelease];
+    if (!text) return body;
+    for (NSString *host in [NSArray arrayWithObjects:
+                            @"https://m.media-amazon.com/images/",
+                            @"http://m.media-amazon.com/images/",
+                            @"https://ia.media-imdb.com/images/",
+                            @"https://image.tmdb.org/t/p/w185/", nil]) {
+        text = [text stringByReplacingOccurrencesOfString:host
+                                              withString:@"http://ia.media-imdb.com/images/"];
+    }
+    return [text dataUsingEncoding:NSUTF8StringEncoding];
+}
+
 static NSData *FixtureSuggests(NSURLRequest *request, NSInteger *statusOut,
                                NSString **ctypeOut, NSString **routeOut) {
     if (routeOut) *routeOut = @"suggests.json";
@@ -1560,7 +1651,7 @@ static NSData *FixtureSuggests(NSURLRequest *request, NSInteger *statusOut,
     NSString *payload = [[[NSString alloc] initWithData:inner encoding:NSUTF8StringEncoding] autorelease];
     NSString *text = [NSString stringWithFormat:@"imdb$%@(%@)", leaf, payload ? payload : @"{}"];
     *statusOut = 200;
-    return [text dataUsingEncoding:NSUTF8StringEncoding];
+    return RewriteImageHosts([text dataUsingEncoding:NSUTF8StringEncoding]);
 }
 
 static NSData *JSONErrorBody(NSString *message) {
@@ -2226,10 +2317,39 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     _cancelled = YES;
 }
 
+// Ten relays at once is ten concurrent TLS handshakes through tlsfix on a device
+// that has already shown threading trouble. Two at a time fills a grid just as
+// fast and keeps the stack shallow.
+static NSLock *gImageGate = nil;
+static NSInteger gImageBusy = 0;
+
+static BOOL ImageGateEnter(void) {
+    if (!gImageGate) gImageGate = [[NSLock alloc] init];
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:12.0];
+    for (;;) {
+        [gImageGate lock];
+        if (gImageBusy < 2) {
+            gImageBusy++;
+            [gImageGate unlock];
+            return YES;
+        }
+        [gImageGate unlock];
+        if ([deadline timeIntervalSinceNow] <= 0) return NO;
+        usleep(40 * 1000);
+    }
+}
+
+static void ImageGateLeave(void) {
+    [gImageGate lock];
+    if (gImageBusy > 0) gImageBusy--;
+    [gImageGate unlock];
+}
+
 // Worker thread: relay a photo from the https origin that still serves it.
 - (void)runImage {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSURLRequest *request = [[self request] retain];
+    BOOL gated = ImageGateEnter();
 
     NSURL *live = LiveImageURL(request);
     NSString *key = [live absoluteString];
@@ -2252,9 +2372,10 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
         source = @"image-cache";
     } else {
         body = [FetchHTTPS(live, 8.0, &status, &ctype, &err) retain];
-        if (body && [body length] <= 512 * 1024) {
+        // Small and few: a 512 MB device cannot hold a wallpaper-sized cache.
+        if (body && [body length] <= 192 * 1024) {
             [gImageCacheLock lock];
-            if ([gImageCache count] < 64) {
+            if ([gImageCache count] < 32) {
                 [gImageCache setObject:[NSDictionary dictionaryWithObjectsAndKeys:
                                         body, @"body", (ctype ? ctype : @"image/jpeg"), @"ctype", nil]
                                 forKey:key];
@@ -2288,7 +2409,10 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
                                                                     statusCode:outStatus
                                                                    HTTPVersion:@"HTTP/1.1"
                                                                   headerFields:headers];
-                [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageAllowed];
+                // Never let CFNetwork near its cache on our behalf: the crash
+                // report points at com.apple.CFURLCACHE_work_queue, and this was
+                // the only response we handed over as storable.
+                [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageNotAllowed];
                 if ([outBody length]) [[self client] URLProtocol:self didLoadData:outBody];
                 [[self client] URLProtocolDidFinishLoading:self];
                 [out release];
@@ -2302,6 +2426,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     [body release];
     [ctype release];
     [request release];
+    if (gated) ImageGateLeave();
     [pool release];
 }
 
@@ -2336,6 +2461,8 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
         ctype = fctype ? fctype : @"application/javascript";
         source = [NSString stringWithFormat:@"suggests-fixture(%@)", err ? err : @"no body"];
     }
+
+    body = RewriteImageHosts(body);
 
     NSDictionary *extra = [NSDictionary dictionaryWithObjectsAndKeys:
                            source, @"route",
@@ -2764,6 +2891,90 @@ static void InstallDataWrapperAccessorHooks(void) {
 
 - (void)setDataSource:(id)source {
     LogPayload(source, @"frontpage-setDataSource");
+    %orig;
+}
+
+%end
+
+// `setWidgetData:` is never called on the poster widget, which leaves two very
+// different worlds: the layout never builds the cell, or it builds it and never
+// hands it data. This traces creation of every title-page view, so the log says
+// which one it is without guessing.
+%hook UIView
+
+- (id)initWithFrame:(CGRect)frame {
+    id view = %orig;
+    NSString *cls = NSStringFromClass([self class]);
+    if ([cls hasPrefix:@"IMTitlePage"]) {
+        ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+                   @"viewinit", @"event",
+                   cls, @"class",
+                   NSStringFromCGRect(frame), @"frame",
+                   ProbeISO8601(), @"ts",
+                   [NSNumber numberWithInt:(int)getpid()], @"pid", nil]);
+    }
+    return view;
+}
+
+%end
+
+// The app draws images through AsyncImageView. If no image every arrives the
+// question is whether a URL is ever set on one of these, or whether the widget
+// data stops before it. Log both sides.
+%hook AsyncImageView
+
+- (void)setImageURL:(id)url {
+    NSString *s = [url isKindOfClass:[NSURL class]] ? [(NSURL *)url absoluteString]
+                 : ([url isKindOfClass:[NSString class]] ? url : nil);
+    ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+               @"asyncimage", @"event", @"setImageURL" , @"where",
+               (s ? s : @"nil"), @"url",
+               ProbeISO8601(), @"ts",
+               [NSNumber numberWithInt:(int)getpid()], @"pid", nil]);
+    %orig;
+}
+
+- (void)setImage:(id)image {
+    NSString *cls = image ? NSStringFromClass([image class]) : @"nil";
+    ProbeEmit([NSDictionary dictionaryWithObjectsAndKeys:
+               @"asyncimage", @"event", @"setImage", @"where",
+               cls, @"image",
+               ProbeISO8601(), @"ts",
+               [NSNumber numberWithInt:(int)getpid()], @"pid", nil]);
+    %orig;
+}
+
+%end
+
+// What the cast row is handed: keys plus the headshot URL, if any.
+%hook IMTitlePagePersonRoleWidget
+
+- (void)setWidgetData:(id)data {
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"widgetdata" forKey:@"event"];
+    [d setObject:@"IMTitlePagePersonRoleWidget" forKey:@"class"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
+    if ([data isKindOfClass:[NSDictionary class]]) {
+        [d setObject:[NSArray arrayWithArray:[(NSDictionary *)data allKeys]] forKey:@"keys"];
+        id n = [(NSDictionary *)data objectForKey:@"name"];
+        if ([n isKindOfClass:[NSDictionary class]]) {
+            id nm = [(NSDictionary *)n objectForKey:@"name"];
+            if ([nm isKindOfClass:[NSString class]]) [d setObject:nm forKey:@"person"];
+            id img = [(NSDictionary *)n objectForKey:@"image"];
+            if ([img isKindOfClass:[NSDictionary class]]) {
+                id u = [(NSDictionary *)img objectForKey:@"url"];
+                if ([u isKindOfClass:[NSString class]]) [d setObject:u forKey:@"image_url"];
+            } else if (img) {
+                [d setObject:NSStringFromClass([img class]) forKey:@"image_class"];
+            }
+        }
+    } else if (data) {
+        [d setObject:NSStringFromClass([data class]) forKey:@"data_class"];
+    } else {
+        [d setObject:@"nil" forKey:@"data_class"];
+    }
+    ProbeEmit(d);
     %orig;
 }
 
