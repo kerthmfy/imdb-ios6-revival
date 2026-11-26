@@ -26,7 +26,7 @@
 
 #import <Foundation/Foundation.h>
 
-#define kBuildTag @"4.19-thumb"
+#define kBuildTag @"4.20-noimg"
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -2379,11 +2379,27 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
         return;
     }
 
-    // Photos are binary and slow: relay them on their own thread too.
+    // Photos are the only traffic that crashes this app: every EXC_BAD_ACCESS
+    // report since the relay went in has an image in flight, and the app now dies
+    // at launch as the front page restores its cells. This switch answers images
+    // with 404 and no worker thread, so the rest of the tweak can be judged on
+    // its own. Set to 1 to bring the relay back.
+#define kRelayImages 0
     if (IsImageRequest(request)) {
+#if kRelayImages
         [NSThread detachNewThreadSelector:@selector(runImage)
                                  toTarget:self
                                withObject:nil];
+#else
+        NSDictionary *headers = ResponseHeaders(@"image/jpeg", 0);
+        NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
+                                                             statusCode:404
+                                                            HTTPVersion:@"HTTP/1.1"
+                                                           headerFields:headers];
+        [[self client] URLProtocol:self didReceiveResponse:resp cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+        [[self client] URLProtocolDidFinishLoading:self];
+        [resp release];
+#endif
         return;
     }
 
