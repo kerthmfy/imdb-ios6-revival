@@ -25,6 +25,8 @@
 //   /tmp/imdb-probe.jsonl              (root-writable, cleared on reboot)
 
 #import <Foundation/Foundation.h>
+
+#define kBuildTag @"4.7-uncache"
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -106,6 +108,22 @@ static NSString *ProbeISO8601(void) {
     char buf[32];
     strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tmv);
     return [NSString stringWithUTF8String:buf];
+}
+
+// An exception raised by the app while it reads our payload used to abort the
+// process with no trace of why (iOS 6 crash reports drop the reason). Recording
+// it turns a silent crash into one log line, and the caller can carry on.
+static void LogException(NSString *where, NSException *e) {
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"exception" forKey:@"event"];
+    [d setObject:(where ? where : @"?") forKey:@"where"];
+    [d setObject:([e name] ? [e name] : @"?") forKey:@"name"];
+    [d setObject:([e reason] ? [e reason] : @"?") forKey:@"reason"];
+    NSString *stack = [[e callStackSymbols] componentsJoinedByString:@" | "];
+    if ([stack length] > 1200) stack = [stack substringToIndex:1200];
+    if (stack) [d setObject:stack forKey:@"stack"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    ProbeEmit(d);
 }
 
 // Every answer this tweak hands back is for the page that is open right now, so
@@ -191,7 +209,7 @@ static void LogLoadContext(void) {
     const char *ins = getenv("DYLD_INSERT_LIBRARIES");
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loadctx" forKey:@"event"];
-    [d setObject:@"4.2-omdb" forKey:@"build"];
+    [d setObject:kBuildTag forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(ins ? [NSString stringWithUTF8String:ins] : @"(unset)") forKey:@"insert"];
@@ -872,6 +890,22 @@ static void CacheSuggestionBody(NSData *body) {
 // a bad or outdated answer cannot stick for the life of the install.
 static const long long kTitleInfoTTL = 30 * 24 * 3600;
 
+// A suggestion entry is a seed, not an answer. CacheSuggestionBody writes one for
+// every search result, and those carry title/year/stars but no plot, cast or
+// rating. Serving one as the page is what left a tapped title with "no
+// information at all" while the log said `title_source=cache`; OMDb was never
+// asked because the cache looked warm.
+static NSDictionary *CachedSuggestionEntry(NSString *tconst) {
+    if (![tconst length]) return nil;
+    TitleInfoInit();
+    [gTitleInfoLock lock];
+    NSDictionary *raw = [[gTitleInfo objectForKey:tconst] retain];
+    [gTitleInfoLock unlock];
+    return [raw autorelease];
+}
+
+// Only an entry that actually reached a live source carries `fetched`, so only
+// that one may be served as-is.
 static NSDictionary *CachedTitleInfo(NSString *tconst) {
     if (![tconst length]) return nil;
     TitleInfoInit();
@@ -880,6 +914,10 @@ static NSDictionary *CachedTitleInfo(NSString *tconst) {
     BOOL expired = NO;
     [gTitleInfoLock lock];
     NSDictionary *raw = [[gTitleInfo objectForKey:tconst] retain];
+    if (raw && ![raw objectForKey:@"fetched"]) {
+        [raw release];
+        raw = nil;
+    }
     if (raw) {
         id stamp = [raw objectForKey:@"fetched"];
         if ([stamp respondsToSelector:@selector(longLongValue)] &&
@@ -916,13 +954,79 @@ static NSMutableDictionary *PosterImageFromInfo(NSDictionary *info) {
 
 // The 2012 person shape: { name: { name, image? } }. `nconst` is unknown here
 // and is left out rather than guessed.
+// `nconst` is present-but-empty for the same reason as `char`: the aux
+// controller's credits set is fed with -addObject:, and a missing key is nil.
+static NSDictionary *PersonFromName(NSString *n) {
+    return [NSDictionary dictionaryWithObjectsAndKeys:
+            n, @"name", @"", @"nconst", nil];
+}
+
 static NSMutableArray *PeopleFromStars(NSArray *stars) {
     NSMutableArray *out = [NSMutableArray array];
     for (id n in stars) {
         if (![n isKindOfClass:[NSString class]]) continue;
-        [out addObject:[NSDictionary dictionaryWithObject:
-                        [NSDictionary dictionaryWithObject:n forKey:@"name"]
-                                                   forKey:@"name"]];
+        [out addObject:[NSDictionary dictionaryWithObject:PersonFromName(n) forKey:@"name"]];
+    }
+    return out;
+}
+
+// The archived cast entries always carry `char`, and the aux controller builds
+// its credits set with -addObject: on that value. A missing key reads as nil and
+// aborts the app (-[__NSSetM addObject:]: object cannot be nil — the crash on
+// every tap when the cast came from OMDb instead of the archive). Empty string
+// when the character is unknown, never an absent key.
+static NSMutableArray *CastFromStars(NSArray *stars) {
+    NSMutableArray *out = [NSMutableArray array];
+    for (id n in stars) {
+        if (![n isKindOfClass:[NSString class]]) continue;
+        [out addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                        @"", @"char", PersonFromName(n), @"name", nil]];
+    }
+    return out;
+}
+
+// The archive's cast entry is {char, name:{nconst,name,image}}. TMDB supplies the
+// character and a headshot per person; the suggestion API's principal cast is
+// the fallback when TMDB has nothing, so the row is never empty for a known
+// title.
+static NSMutableArray *CastEntriesFromInfo(NSDictionary *info) {
+    NSMutableArray *out = [NSMutableArray array];
+    id tmdb = [info objectForKey:@"tmdbCast"];
+    if ([tmdb isKindOfClass:[NSArray class]]) {
+        for (id p in (NSArray *)tmdb) {
+            if (![p isKindOfClass:[NSDictionary class]]) continue;
+            NSString *n = [p objectForKey:@"name"];
+            if (![n isKindOfClass:[NSString class]] || ![n length]) continue;
+            NSMutableDictionary *person = [NSMutableDictionary dictionary];
+            [person setObject:n forKey:@"name"];
+            [person setObject:@"" forKey:@"nconst"];
+            id img = [p objectForKey:@"image"];
+            if ([img isKindOfClass:[NSString class]] && [img length]) {
+                [person setObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                                   img, @"url",
+                                   [NSNumber numberWithInt:185], @"width",
+                                   [NSNumber numberWithInt:278], @"height", nil]
+                           forKey:@"image"];
+            }
+            NSString *character = [p objectForKey:@"character"];
+            [out addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                            ([character isKindOfClass:[NSString class]] ? character : @""), @"char",
+                            person, @"name", nil]];
+        }
+    }
+    if ([out count]) return out;
+    NSArray *stars = [info objectForKey:@"stars"];
+    return CastFromStars([stars isKindOfClass:[NSArray class]] ? stars : [NSArray array]);
+}
+
+// Writers carry `attr` ("(novel)", "(screenplay)") in every archived entry, so
+// the key stays present and empty for the same reason as `char` above.
+static NSMutableArray *WritersFromStars(NSArray *stars) {
+    NSMutableArray *out = [NSMutableArray array];
+    for (id n in stars) {
+        if (![n isKindOfClass:[NSString class]]) continue;
+        [out addObject:[NSDictionary dictionaryWithObjectsAndKeys:
+                        @"", @"attr", PersonFromName(n), @"name", nil]];
     }
     return out;
 }
@@ -951,9 +1055,7 @@ static void ApplyTitleInfoToTitleData(NSMutableDictionary *d, NSDictionary *info
         [d setObject:[NSArray array] forKey:@"photos"];
     }
 
-    NSArray *stars = [info objectForKey:@"stars"];
-    [d setObject:PeopleFromStars([stars isKindOfClass:[NSArray class]] ? stars : [NSArray array])
-          forKey:@"cast_summary"];
+    [d setObject:CastEntriesFromInfo(info) forKey:@"cast_summary"];
 
     for (NSString *k in [NSArray arrayWithObjects:@"directors_summary", @"writers_summary",
                          @"genres", @"has", nil]) {
@@ -1014,7 +1116,7 @@ static void ApplyTitleInfoToTitleData(NSMutableDictionary *d, NSDictionary *info
     }
     NSArray *writers = [info objectForKey:@"writers"];
     if ([writers isKindOfClass:[NSArray class]] && [writers count]) {
-        [d setObject:PeopleFromStars(writers) forKey:@"writers_summary"];
+        [d setObject:WritersFromStars(writers) forKey:@"writers_summary"];
     }
 }
 
@@ -1069,7 +1171,7 @@ static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
     }
     [widgets setObject:pstr forKey:@"pstr"];
 
-    [widgets setObject:[NSDictionary dictionaryWithObject:PeopleFromStars(stars) forKey:@"people"]
+    [widgets setObject:[NSDictionary dictionaryWithObject:CastEntriesFromInfo(info) forKey:@"people"]
                 forKey:@"cast"];
 
     NSMutableDictionary *photos = [NSMutableDictionary dictionary];
@@ -1100,11 +1202,6 @@ static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
     [widgets setObject:[NSDictionary dictionaryWithObject:genreDicts forKey:@"genres"]
                 forKey:@"gnrs"];
     [hero setObject:genreDicts forKey:@"genres"];
-    for (NSString *hk in [NSArray arrayWithObjects:@"certificate", @"rating", @"votes", nil]) {
-        id hv = [info objectForKey:hk];
-        if (!hv) continue;
-        [hero setObject:hv forKey:([hk isEqualToString:@"votes"] ? @"num_votes" : hk)];
-    }
 
     NSMutableDictionary *arate = [NSMutableDictionary dictionary];
     if ([info objectForKey:@"rating"]) [arate setObject:[info objectForKey:@"rating"] forKey:@"rating"];
@@ -1118,19 +1215,22 @@ static NSMutableDictionary *TitleWidgetsFromInfo(NSDictionary *info) {
     }
     NSArray *writers = [info objectForKey:@"writers"];
     if ([writers isKindOfClass:[NSArray class]] && [writers count]) {
-        [widgets setObject:[NSDictionary dictionaryWithObject:PeopleFromStars(writers) forKey:@"people"]
+        [widgets setObject:[NSDictionary dictionaryWithObject:WritersFromStars(writers) forKey:@"people"]
                     forKey:@"wrt"];
     }
+    // Shapes taken from shim/build-title-aux.py, which the app already renders:
+    // runt is {runtime: seconds} and rdat is {release_date: {normal: ...}}.
+    // Invented key names here are what threw inside the app's own widgets.
     if ([info objectForKey:@"runtime"]) {
         [widgets setObject:[NSDictionary dictionaryWithObject:[info objectForKey:@"runtime"]
-                                                       forKey:@"time"]
+                                                       forKey:@"runtime"]
                     forKey:@"runt"];
     }
     NSString *released = [info objectForKey:@"released"];
     if ([released isKindOfClass:[NSString class]] && [released length]) {
-        [widgets setObject:[NSDictionary dictionaryWithObjectsAndKeys:
-                            [NSDictionary dictionaryWithObject:released forKey:@"normal"], @"release_date",
-                            released, @"date", nil]
+        [widgets setObject:[NSDictionary dictionaryWithObject:
+                            [NSDictionary dictionaryWithObject:released forKey:@"normal"]
+                                                   forKey:@"release_date"]
                     forKey:@"rdat"];
     }
 
@@ -1947,7 +2047,7 @@ static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSSt
 
         if (body) {
             CacheSuggestionBody(body);
-            NSDictionary *sugg = CachedTitleInfo(tconst);
+            NSDictionary *sugg = CachedSuggestionEntry(tconst);
             if (sugg) {
                 [info addEntriesFromDictionary:sugg];
                 src = @"live";
@@ -1964,6 +2064,15 @@ static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSSt
 
         // OMDb answers by id alone, so this is also what rescues an id the
         // suggestion endpoint has never heard of — a blank page becomes a page.
+        // The page's cast row needs a character and a headshot per person; OMDb
+        // has neither. Fetch once and keep it with the entry so the title page
+        // and the full cast list never disagree.
+        if (![info objectForKey:@"tmdbCast"]) {
+            NSString *tmdbErr = nil;
+            NSArray *tmdbCast = FetchTmdbCast(tconst, &tmdbErr);
+            if ([tmdbCast count]) [info setObject:tmdbCast forKey:@"tmdbCast"];
+        }
+
         NSString *omdbErr = nil;
         NSMutableDictionary *omdb = FetchOmdbInfo(tconst, &omdbErr);
         if (omdb) {
@@ -1980,8 +2089,12 @@ static NSDictionary *FetchTitleInfo(NSString *tconst, NSInteger *statusOut, NSSt
         }
 
         // Stamped so the disk entry can expire: a wrong answer must not live
-        // forever just because it was written once.
-        [info setObject:[NSNumber numberWithLongLong:(long long)time(NULL)] forKey:@"fetched"];
+        // forever just because it was written once. An answer with nothing live
+        // in it is left unstamped on purpose: it stays a seed, and the next tap
+        // retries instead of showing a blank page for 30 days.
+        if ([src length]) {
+            [info setObject:[NSNumber numberWithLongLong:(long long)time(NULL)] forKey:@"fetched"];
+        }
         [gTitleInfoLock lock];
         [gTitleInfo setObject:info forKey:tconst];
         [gTitleInfoLock unlock];
@@ -2052,6 +2165,11 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
 
 - (void)startLoading {
     NSURLRequest *request = [self request];
+    // Entry trace: a route that is claimed and then never served says where the
+    // page actually stops.
+    ProbeLogRequest(request, @"start",
+                    [NSDictionary dictionaryWithObject:(RouteNameForRequest(request) ? RouteNameForRequest(request) : @"(none)")
+                                                forKey:@"route"]);
 
     // Search is the one route whose live answer is worth waiting for; handled
     // off the caller's thread so search-as-you-type does not block on it.
@@ -2250,6 +2368,7 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
 - (void)runTitleRoute {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSURLRequest *request = [[self request] retain];
+    ProbeLogRequest(request, @"stage", [NSDictionary dictionaryWithObject:@"begin" forKey:@"stage"]);
     NSString *tconst = TconstForRequest(request);
     // fullcredits is often sent without the id; the page being opened is the
     // one the previous title route answered.
@@ -2288,7 +2407,14 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
     NSInteger status = 200;
     NSString *route = nil;
     NSString *ctype = nil;
-    NSData *body = ServeRoute(request, info, &status, &route, &ctype);
+    NSData *body = nil;
+    @try {
+        body = ServeRoute(request, info, &status, &route, &ctype);
+    } @catch (NSException *e) {
+        LogException(@"serve", e);
+        body = nil;
+        status = 500;
+    }
     if (!body) body = [NSData data];
 
     NSMutableDictionary *extra = [NSMutableDictionary dictionary];
@@ -2314,16 +2440,22 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
         NSString *outCtype = [(ctype ? ctype : @"application/json") retain];
         NSInteger outStatus = status;
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (!_cancelled) {
-                NSDictionary *headers = ResponseHeaders(outCtype, [outBody length]);
-                NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
-                                                                    statusCode:outStatus
-                                                                   HTTPVersion:@"HTTP/1.1"
-                                                                  headerFields:headers];
-                [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageNotAllowed];
-                if ([outBody length]) [[self client] URLProtocol:self didLoadData:outBody];
-                [[self client] URLProtocolDidFinishLoading:self];
-                [out release];
+            // The app parses the body synchronously on this stack: an exception
+            // here used to abort the process. Catch, log, and never crash.
+            @try {
+                if (!_cancelled) {
+                    NSDictionary *headers = ResponseHeaders(outCtype, [outBody length]);
+                    NSHTTPURLResponse *out = [[NSHTTPURLResponse alloc] initWithURL:[request URL]
+                                                                        statusCode:outStatus
+                                                                       HTTPVersion:@"HTTP/1.1"
+                                                                      headerFields:headers];
+                    [[self client] URLProtocol:self didReceiveResponse:out cacheStoragePolicy:NSURLCacheStorageNotAllowed];
+                    if ([outBody length]) [[self client] URLProtocol:self didLoadData:outBody];
+                    [[self client] URLProtocolDidFinishLoading:self];
+                    [out release];
+                }
+            } @catch (NSException *e) {
+                LogException(@"deliver", e);
             }
             [outBody release];
             [outCtype release];
@@ -2336,15 +2468,53 @@ static BOOL IsTitleDataRoute(NSURLRequest *request) {
 
 @end
 
+// The definitive diagnostic: whatever throws, anywhere, gives us its name and
+// reason instead of an empty SIGABRT report. iOS 6 crash logs drop both, and the
+// throw happens asynchronously so no @try around the delivery can see it.
+static void IMDBUncaughtHandler(NSException *e) {
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"uncaught" forKey:@"event"];
+    [d setObject:([e name] ? [e name] : @"?") forKey:@"name"];
+    [d setObject:([e reason] ? [e reason] : @"?") forKey:@"reason"];
+    NSString *stack = [[e callStackSymbols] componentsJoinedByString:@" | "];
+    if ([stack length] > 2000) stack = [stack substringToIndex:2000];
+    if (stack) [d setObject:stack forKey:@"stack"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    ProbeEmit(d);
+}
+
+// Every build changes the shape of the bodies we serve, but the app's own
+// URLCache keeps the previous ones and answers a tap without ever asking us: the
+// page then renders yesterday's payload and the tweak looks broken. Clear it
+// once per build tag.
+static void PurgeStaleURLCache(void) {
+    NSString *marker = [@"/Library/IMDbRevival/purged-" stringByAppendingString:kBuildTag];
+    if (access([marker UTF8String], F_OK) == 0) return;
+    NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/URLCache"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSUInteger removed = 0;
+    for (NSString *item in [fm contentsOfDirectoryAtPath:dir error:NULL]) {
+        if ([fm removeItemAtPath:[dir stringByAppendingPathComponent:item] error:NULL]) removed++;
+    }
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    [d setObject:@"urlcache" forKey:@"event"];
+    [d setObject:[NSNumber numberWithUnsignedInteger:removed] forKey:@"removed"];
+    [d setObject:ProbeISO8601() forKey:@"ts"];
+    ProbeEmit(d);
+    [@"" writeToFile:marker atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+}
+
 %ctor {
     ProbeInit();
+    NSSetUncaughtExceptionHandler(&IMDBUncaughtHandler);
+    PurgeStaleURLCache();
     InstallDataWrapperAccessorHooks();
     [NSURLProtocol registerClass:[IMDBServeProtocol class]];
     LogLoadContext();
 
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     [d setObject:@"loaded" forKey:@"event"];
-    [d setObject:@"4.2-omdb" forKey:@"build"];
+    [d setObject:kBuildTag forKey:@"build"];
     [d setObject:ProbeISO8601() forKey:@"ts"];
     [d setObject:[NSNumber numberWithInt:(int)getpid()] forKey:@"pid"];
     [d setObject:(getenv("HOME") ? [NSString stringWithUTF8String:getenv("HOME")] : @"(null)")
@@ -2574,6 +2744,18 @@ static void InstallDataWrapperAccessorHooks(void) {
 - (void)handleResponse:(id)response {
     LogPayload(response, @"aux-handleResponse");
     %orig;
+}
+
+// This is the method that aborted the app: it builds an NSSet from values in the
+// payload, so a key we do not emit reads as nil. Log what it received and keep
+// the exception from killing the process, so a thin answer degrades instead.
+- (void)setTitleCreditsSummary:(id)value {
+    LogPayload(value, @"aux-creditsSummary");
+    @try {
+        %orig;
+    } @catch (NSException *e) {
+        LogException(@"creditsSummary", e);
+    }
 }
 
 %end

@@ -452,3 +452,37 @@ kept only as a diagnostic for measuring what the device itself can handshake wit
 
 Both the Mac and the iPad are on DHCP here — re-check `ipconfig getifaddr en0` before wiring the
 device, since the shim host address has already moved once.
+
+### 4.7 — cast, and the two caches that hid every fix
+
+Three separate faults were making a tapped film come up empty or abort:
+
+1. **A search result is not a title.** `CacheSuggestionBody` wrote every suggestion
+   entry into the same map as fully-fetched titles, so `CachedTitleInfo` reported a
+   warm hit for a title that only had name/year/stars, and `FetchTitleInfo` never
+   asked OMDb. The page was served from that seed (`title_source=cache`, ~600 B) and
+   was blank by construction. Suggestion entries now carry no `fetched` stamp and
+   `CachedTitleInfo` only answers with an entry that reached a live source;
+   `CachedSuggestionEntry` still hands the seed to the merge step. An entry whose
+   fetch produced nothing live is deliberately left unstamped, so the next tap
+   retries instead of showing a blank page for the whole TTL.
+2. **`-[__NSSetM addObject:]: object cannot be nil`.** `IMTabletTitlePageAuxillary-
+   ViewController -setTitleCreditsSummary:` builds a set from the payload, so a
+   missing key reads as nil and aborts the app on the main thread. `char`, `attr` and
+   `nconst` are now always present (empty string when unknown), and an
+   uncaught-exception handler records name/reason/stack, so a shape mistake is one
+   log line instead of an empty SIGABRT report.
+3. **The app's own URLCache beat the tweak.** `Library/Caches/URLCache` kept our older
+   bodies for the same URLs, so a tap was answered without any request reaching the
+   protocol (no `claim` lines) and the page rendered a payload from before the fix.
+   The tweak now clears that directory once per build tag.
+
+The cast row also gets real data: TMDB characters and headshots are fetched with the
+title (not only for the cast list) and stored with the entry, so the row shows `char`,
+`name`, `nconst` and `image` in the archive's shape; the suggestion API's principal
+cast is the fallback.
+
+Verified on device (iPad 2, iOS 6.1.3): tapping The Matrix logs `maindetails 6,706 B
+src=live+omdb`, `title-auxiliary 32,018 B`, `fullcredits 82,180 B`, no `uncaught` or
+`exception` lines, and the cast row renders with characters and headshots. Rendered
+pixels are still only confirmed by the owner.
