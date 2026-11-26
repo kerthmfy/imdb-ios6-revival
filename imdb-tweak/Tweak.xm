@@ -26,7 +26,7 @@
 
 #import <Foundation/Foundation.h>
 
-#define kBuildTag @"4.16-httpserial"
+#define kBuildTag @"4.18-smallimg"
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -1553,11 +1553,16 @@ static NSURL *LiveImageURL(NSURLRequest *request) {
     }
     path = [@"/images/" stringByAppendingString:
             StripSizingSuffix([path substringFromIndex:[@"/images/" length]])];
-    if (wantWidth > 0 && [path hasSuffix:@"_V1_.jpg"]) {
-        path = [path stringByReplacingOccurrencesOfString:@"_V1_.jpg"
-                                              withString:[NSString stringWithFormat:@"_SX%ld.jpg", (long)wantWidth]
-                                                 options:NSBackwardsSearch
-                                                   range:NSMakeRange(0, [path length])];
+    // Whatever variant the app asked for, ask Amazon for that width. Matching only
+    // `_V1_.jpg` missed the `_V1_SX..`/`_V1_CR..` shapes, which is how a search row
+    // ended up served a 1,056,435-byte original.
+    if (wantWidth > 0) {
+        NSRange v = [path rangeOfString:@"._V1_" options:NSBackwardsSearch];
+        if (v.location == NSNotFound) v = [path rangeOfString:@"_V1_" options:NSBackwardsSearch];
+        if (v.location != NSNotFound) {
+            path = [NSString stringWithFormat:@"%@._V1_SX%ld.jpg",
+                    [path substringToIndex:v.location], (long)wantWidth];
+        }
     }
     NSString *s = [NSString stringWithFormat:@"https://m.media-amazon.com%@%@", path,
                    [query length] ? [@"?" stringByAppendingString:query] : @""];
@@ -1827,6 +1832,60 @@ static NSData *FetchHTTPS(NSURL *url, NSTimeInterval timeout, NSInteger *statusO
     return out;
 }
 
+// `sendSynchronousRequest` keeps an internal run loop of its own; several alive at
+// once crashed inside CFNetwork (EXC_BAD_ACCESS on our worker thread). This drives
+// one connection on the caller's thread with an explicit run loop instead.
+@interface IMDBHTTPLoader : NSObject {
+    NSMutableData *body;
+    NSURLResponse *response;
+    NSError *err;
+    BOOL done;
+}
+- (BOOL)finished;
+- (NSData *)body;
+- (NSURLResponse *)response;
+- (NSError *)error;
+@end
+
+@implementation IMDBHTTPLoader
+
+- (id)init {
+    if ((self = [super init])) body = [[NSMutableData alloc] init];
+    return self;
+}
+
+- (void)dealloc {
+    [body release];
+    [response release];
+    [err release];
+    [super dealloc];
+}
+
+- (BOOL)finished { return done; }
+- (NSData *)body { return body; }
+- (NSURLResponse *)response { return response; }
+- (NSError *)error { return err; }
+
+- (void)connection:(NSURLConnection *)c didReceiveResponse:(NSURLResponse *)r {
+    [response release];
+    response = [r retain];
+    [body setLength:0];
+}
+
+- (void)connection:(NSURLConnection *)c didReceiveData:(NSData *)d {
+    [body appendData:d];
+}
+
+- (void)connectionDidFinishLoading:(NSURLConnection *)c { done = YES; }
+
+- (void)connection:(NSURLConnection *)c didFailWithError:(NSError *)e {
+    [err release];
+    err = [e retain];
+    done = YES;
+}
+
+@end
+
 static NSData *FetchHTTPSRaw(NSURL *url, NSTimeInterval timeout, NSInteger *statusOut,
                              NSString **ctypeOut, NSString **errOut) {
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
@@ -1838,6 +1897,11 @@ static NSData *FetchHTTPSRaw(NSURL *url, NSTimeInterval timeout, NSInteger *stat
     // Must not be re-intercepted: this request is the tweak talking to the world.
     [NSURLProtocol setProperty:[NSNumber numberWithBool:YES] forKey:kServedKey inRequest:req];
 
+    // The run-loop loader built on IMDBHTTPLoader made things worse: it crashed at
+    // launch inside its own delegate callback (thread 20, objc_msgSend on a dead
+    // object), so this stays on the synchronous call — now with one request alive
+    // at a time (gHTTPLock) and with small image bodies, which was the condition
+    // the search crash actually needed.
     NSHTTPURLResponse *resp = nil;
     NSError *err = nil;
     NSData *body = [NSURLConnection sendSynchronousRequest:req
