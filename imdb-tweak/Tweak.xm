@@ -26,7 +26,7 @@
 
 #import <Foundation/Foundation.h>
 
-#define kBuildTag @"4.18-smallimg"
+#define kBuildTag @"4.19-thumb"
 #import <UIKit/UIWebView.h>
 #include <dlfcn.h>
 #include <objc/runtime.h>
@@ -1538,6 +1538,31 @@ static NSInteger RequestedImageWidth(NSString *path) {
     return w;
 }
 
+// Whatever the URL shape, never hand this device a multi-megabyte image: a
+// 2.5 MB original reached a search row and the app died on memory. Anything over
+// 120 KB is re-encoded to the size the row asked for (or 320 px).
+static NSData *DownscaleJPEG(NSData *src, NSInteger maxPixel) {
+    if ([src length] <= 120 * 1024) return src;
+    UIImage *img = [UIImage imageWithData:src];
+    if (!img) return src;
+    CGSize s = [img size];
+    if (s.width < 1 || s.height < 1) return src;
+    if (maxPixel <= 0) maxPixel = 320;
+    if (maxPixel > 640) maxPixel = 640;
+    CGFloat largest = MAX(s.width, s.height);
+    CGFloat scale = (CGFloat)maxPixel / largest;
+    if (scale >= 1.0) return src;
+    CGSize target = CGSizeMake(MAX(1.0, floor(s.width * scale)),
+                               MAX(1.0, floor(s.height * scale)));
+    UIGraphicsBeginImageContext(target);
+    [img drawInRect:CGRectMake(0, 0, target.width, target.height)];
+    UIImage *small = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    NSData *jpeg = small ? UIImageJPEGRepresentation(small, 0.8) : nil;
+    if ([jpeg length] && [jpeg length] < [src length]) return jpeg;
+    return src;
+}
+
 static NSURL *LiveImageURL(NSURLRequest *request) {
     NSString *rawPath = request.URL.path ? request.URL.path : @"/images/";
     NSInteger wantWidth = RequestedImageWidth(rawPath);
@@ -2468,6 +2493,14 @@ static void ImageGateLeave(void) {
     }
     if (!ctype) ctype = @"image/jpeg";
     BOOL ok = (status == 200 && [body length] > 0);
+    if (ok && [body length] > 120 * 1024) {
+        NSInteger want = RequestedImageWidth(request.URL.path ? request.URL.path : @"");
+        NSData *small = DownscaleJPEG(body, want > 0 ? want : 320);
+        if (small && small != body) {
+            [body release];
+            body = [small retain];
+        }
+    }
 
     NSString *route = ok ? source
                          : [NSString stringWithFormat:@"image-fail(%@)", err ? err : @"no body"];
